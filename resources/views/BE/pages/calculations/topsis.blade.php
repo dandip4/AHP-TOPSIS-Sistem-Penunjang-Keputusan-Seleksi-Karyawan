@@ -46,6 +46,25 @@
         </div>
 
         @if($periodId && $selectedPeriod)
+            @if(!$kmkkAggregateReady)
+                <div class="alert alert-warning border-0 shadow-sm d-flex align-items-start gap-2 mb-3">
+                    <i class="ti ti-users-group fs-4 flex-shrink-0"></i>
+                    <div>
+                        <strong>Langkah KMKK</strong> — Matriks agregasi kelompok belum siap. Lakukan:
+                        <ol class="small mb-0 ps-3 mt-1">
+                            <li>Semua evaluator mengisi halaman <strong>Penilaian Pelamar</strong> (masing-masing login atau admin memilih evaluator).</li>
+                            <li>Admin membuka <strong>Evaluasi Kelompok (KMKK)</strong> dan menekan <strong>Hitung matriks agregat</strong>.</li>
+                            <li>Baru kemudian hitung TOPSIS di bawah ini.</li>
+                        </ol>
+                        <a href="{{ route('kmkk.group-results', ['period_id' => $periodId]) }}" class="btn btn-sm btn-outline-primary mt-2">Buka halaman KMKK</a>
+                    </div>
+                </div>
+            @else
+                <div class="alert alert-success border-0 shadow-sm mb-3 d-flex align-items-center gap-2">
+                    <i class="ti ti-check fs-4"></i>
+                    <span class="mb-0">Matriks agregasi KMKK lengkap. Perhitungan TOPSIS memakai nilai agregat kelompok.</span>
+                </div>
+            @endif
             <div class="card mb-3">
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-2">

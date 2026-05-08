@@ -168,18 +168,19 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            @forelse($period->criteriaWeights as $cw)
+                                            @forelse($period->linkedCriteria as $crit)
+                                            @php $cw = $period->criteriaWeights->firstWhere('criteria_id', $crit->id); @endphp
                                             <tr>
                                                 <td class="ps-4 align-middle">{{ $loop->iteration }}</td>
                                                 <td class="align-middle">
-                                                    @if($cw->criteria?->code)
-                                                        <span class="badge bg-light-primary">{{ $cw->criteria->code }}</span>
+                                                    @if($crit->code)
+                                                        <span class="badge bg-light-primary">{{ $crit->code }}</span>
                                                     @else
                                                         —
                                                     @endif
                                                 </td>
-                                                <td class="align-middle">{{ $cw->criteria?->name ?? '—' }}</td>
-                                                <td class="pe-4 align-middle">{{ $cw->criteria ? number_format((float) $cw->weight, 6) : '—' }}</td>
+                                                <td class="align-middle">{{ $crit->name }}</td>
+                                                <td class="pe-4 align-middle">{{ $cw ? number_format((float) $cw->weight, 6) : '—' }}</td>
                                             </tr>
                                             @empty
                                             <tr>

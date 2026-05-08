@@ -29,6 +29,9 @@
         </div>
     </div>
 </div>
+@php
+    $u = Auth::user();
+@endphp
 <ul class="pc-navbar">
     <li class="pc-item pc-caption"><label>Menu Utama</label></li>
     <li class="pc-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
@@ -38,7 +41,7 @@
         </a>
     </li>
 
-    @if(Auth::user()->isAdmin())
+    @if($u->isAdmin())
     <li class="pc-item pc-caption"><label>Master Data</label></li>
     <li class="pc-item {{ request()->routeIs('periods.*') ? 'active' : '' }}">
         <a href="{{ route('periods.index') }}" class="pc-link">
@@ -58,14 +61,37 @@
             <span class="pc-mtext">Data Pelamar</span>
         </a>
     </li>
+    <li class="pc-item {{ request()->routeIs('evaluators.*') ? 'active' : '' }}">
+        <a href="{{ route('evaluators.index') }}" class="pc-link">
+            <span class="pc-micon"><i class="ti ti-users-group"></i></span>
+            <span class="pc-mtext">Data Evaluator (KMKK)</span>
+        </a>
+    </li>
 
-    <li class="pc-item pc-caption"><label>Penilaian & Perhitungan</label></li>
+    <li class="pc-item pc-caption"><label>KMKK & Penilaian</label></li>
+    @else
+        @if($u->isEvaluatorUser())
+            <li class="pc-item pc-caption"><label>Penilaian KMKK</label></li>
+        @endif
+    @endif
+
+    @if($u->isAdmin() || $u->isEvaluatorUser())
     <li class="pc-item {{ request()->routeIs('evaluations.*') ? 'active' : '' }}">
         <a href="{{ route('evaluations.index') }}" class="pc-link">
             <span class="pc-micon"><i class="ti ti-writing"></i></span>
             <span class="pc-mtext">Penilaian Pelamar</span>
         </a>
     </li>
+    <li class="pc-item {{ request()->routeIs('kmkk.*') ? 'active' : '' }}">
+        <a href="{{ route('kmkk.group-results') }}" class="pc-link">
+            <span class="pc-micon"><i class="ti ti-hierarchy"></i></span>
+            <span class="pc-mtext">Evaluasi Kelompok (KMKK)</span>
+        </a>
+    </li>
+    @endif
+
+    @if($u->isAdmin())
+    <li class="pc-item pc-caption"><label>Perhitungan</label></li>
     <li class="pc-item {{ request()->routeIs('calculations.ahp') ? 'active' : '' }}">
         <a href="{{ route('calculations.ahp') }}" class="pc-link">
             <span class="pc-micon"><i class="ti ti-math-function"></i></span>
@@ -86,6 +112,7 @@
     </li>
     @endif
 
+    @if($u->isAdmin() || $u->isDirektur() || $u->isEvaluatorUser())
     <li class="pc-item pc-caption"><label>Laporan & Info</label></li>
     <li class="pc-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
         <a href="{{ route('reports.index') }}" class="pc-link">
@@ -93,10 +120,14 @@
             <span class="pc-mtext">Laporan Seleksi</span>
         </a>
     </li>
+    @endif
+
+    @if($u->isAdmin())
     <li class="pc-item {{ request()->routeIs('announcements.*') ? 'active' : '' }}">
         <a href="{{ route('announcements.index') }}" class="pc-link">
             <span class="pc-micon"><i class="ti ti-speakerphone"></i></span>
             <span class="pc-mtext">Pengumuman</span>
         </a>
     </li>
+    @endif
 </ul>

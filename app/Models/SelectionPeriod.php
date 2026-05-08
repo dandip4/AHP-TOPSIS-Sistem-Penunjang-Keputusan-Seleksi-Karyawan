@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SelectionPeriod extends Model
@@ -11,6 +12,7 @@ class SelectionPeriod extends Model
     protected $fillable = [
         'name', 'position', 'start_date', 'end_date',
         'description', 'status', 'created_by',
+        'aggregation_method', 'owa_alpha', 'aggregation_computed_at',
     ];
 
     protected function casts(): array
@@ -18,6 +20,7 @@ class SelectionPeriod extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'aggregation_computed_at' => 'datetime',
         ];
     }
 
@@ -34,6 +37,11 @@ class SelectionPeriod extends Model
     public function evaluations(): HasMany
     {
         return $this->hasMany(Evaluation::class, 'period_id');
+    }
+
+    public function aggregatedEvaluations(): HasMany
+    {
+        return $this->hasMany(AggregatedEvaluation::class, 'period_id');
     }
 
     public function pairwiseComparisons(): HasMany
@@ -54,6 +62,18 @@ class SelectionPeriod extends Model
     public function announcements(): HasMany
     {
         return $this->hasMany(Announcement::class, 'period_id');
+    }
+
+    /**
+     * Kriteria aktif untuk periode ini (urutan mempengaruhi tampilan formulir & bobot).
+     */
+    public function linkedCriteria(): BelongsToMany
+    {
+        return $this->belongsToMany(Criteria::class, 'selection_period_criteria', 'selection_period_id', 'criteria_id')
+            ->withPivot('sort_order')
+            ->withTimestamps()
+            ->orderByPivot('sort_order')
+            ->orderBy('criteria.code');
     }
 
     public function getStatusBadgeAttribute(): string

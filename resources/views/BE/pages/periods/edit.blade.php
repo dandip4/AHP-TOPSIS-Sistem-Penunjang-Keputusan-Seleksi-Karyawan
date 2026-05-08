@@ -68,6 +68,50 @@
                                     </div>
                                     @error('description')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                                 </div>
+                                <div class="col-12">
+                                    <div class="border rounded p-3 bg-body">
+                                        <label class="form-label fw-semibold"><i class="ti ti-list-details me-2 text-primary"></i>Kriteria & bobot untuk posisi ini</label>
+                                        <p class="small text-muted mb-3">Centang kriteria yang dipakai. Isi bobot relatif (&gt; 0); dinormalisasi ke jumlah 1. Mengubah kriteria menghapus matriks AHP dan agregasi — evaluasi untuk kriteria yang dihapus ikut terhapus.</p>
+                                        @php
+                                            $linkedIds = $period->linkedCriteria->pluck('id')->map(fn ($v) => (int) $v)->all();
+                                        @endphp
+                                        @error('criteria_ids')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
+                                        @error('weights')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
+                                        <div class="table-responsive mb-0">
+                                            <table class="table table-sm align-middle mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th style="width:3rem" class="text-center">Pakai</th>
+                                                        <th>Kriteria</th>
+                                                        <th style="width:9rem">Bobot relatif</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($criteriaMaster as $c)
+                                                        @php
+                                                            $picked = collect(old('criteria_ids', $linkedIds))->map(fn ($v) => (int) $v)->contains((int) $c->id);
+                                                            $cw = $period->criteriaWeights->firstWhere('criteria_id', $c->id);
+                                                            $defaultW = $cw ? sprintf('%.6f', (float) $cw->weight) : '';
+                                                        @endphp
+                                                        <tr>
+                                                            <td class="text-center">
+                                                                <input type="checkbox" class="form-check-input" name="criteria_ids[]" value="{{ $c->id }}" id="ecrit_{{ $c->id }}" @checked($picked)>
+                                                            </td>
+                                                            <td>
+                                                                <label class="mb-0 fw-medium" for="ecrit_{{ $c->id }}">{{ $c->code }} — {{ $c->name }}</label>
+                                                                <div class="small text-muted">{{ $c->type === 'cost' ? 'Biaya' : 'Keuntungan' }}</div>
+                                                            </td>
+                                                            <td>
+                                                                <input type="number" step="any" min="0" name="weights[{{ $c->id }}]" class="form-control form-control-sm @error('weights.'.$c->id) is-invalid @enderror" value="{{ old('weights.'.$c->id, $picked ? $defaultW : '') }}" placeholder="0" >
+                                                                @error('weights.'.$c->id)<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="col-md-6">
                                     <div class="form-floating">
                                         <select name="status" id="status" class="form-select @error('status') is-invalid @enderror" required aria-label="Status">

@@ -5,27 +5,27 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class Evaluation extends Model
+class AggregatedEvaluation extends Model
 {
     protected $fillable = [
-        'period_id', 'applicant_id', 'criteria_id', 'evaluator_id', 'score',
+        'period_id',
+        'applicant_id',
+        'criteria_id',
+        'aggregated_score',
+        'aggregation_method',
+        'evaluator_count_used',
     ];
 
     protected function casts(): array
     {
         return [
-            'score' => 'decimal:4',
+            'aggregated_score' => 'decimal:4',
         ];
     }
 
     public function period(): BelongsTo
     {
         return $this->belongsTo(SelectionPeriod::class, 'period_id');
-    }
-
-    public function evaluator(): BelongsTo
-    {
-        return $this->belongsTo(Evaluator::class, 'evaluator_id');
     }
 
     public function applicant(): BelongsTo

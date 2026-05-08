@@ -34,7 +34,7 @@
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-hover table-borderless datatable mb-0 align-middle">
+                            <table class="table table-hover table-borderless mb-0 align-middle">
                                 <thead class="border-bottom">
                                     <tr>
                                         <th class="ps-4" style="width:3.5rem;">No</th>

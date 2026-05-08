@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Criteria extends Model
@@ -33,6 +34,13 @@ class Criteria extends Model
     public function weights(): HasMany
     {
         return $this->hasMany(CriteriaWeight::class, 'criteria_id');
+    }
+
+    public function selectionPeriods(): BelongsToMany
+    {
+        return $this->belongsToMany(SelectionPeriod::class, 'selection_period_criteria', 'criteria_id', 'selection_period_id')
+            ->withPivot('sort_order')
+            ->withTimestamps();
     }
 
     public function scopeActive($query)

@@ -236,10 +236,56 @@
                         </div>
                     </div>
                 </div>
+            @elseif(isset($weightsDefinedWithoutPairwise) && $weightsDefinedWithoutPairwise->isNotEmpty())
+                <div class="alert alert-info d-flex align-items-start gap-2 mt-3 mb-3" role="alert">
+                    <i class="ti ti-info-circle fs-4 flex-shrink-0"></i>
+                    <div>Bobot di bawah bersumber dari <strong>definisi periode</strong> (kriteria terpilih saat buat/edit periode). Matriks berpasangan AHP belum ada — tekan <strong>Hitung AHP (Auto)</strong> jika ingin menghitung ulang bobot dari perbandingan berpasangan.</div>
+                </div>
+                <div class="card mb-3">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <i class="ti ti-chart-pie text-primary"></i>
+                        <h5 class="mb-0">Bobot prioritas (saat ini)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-borderless mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Kriteria</th>
+                                        <th class="text-end">Bobot</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($weightsDefinedWithoutPairwise as $cw)
+                                        <tr>
+                                            <td>
+                                                <span class="fw-bold">{{ $cw->criteria?->code }}</span>
+                                                <span class="text-muted">— {{ $cw->criteria?->name }}</span>
+                                            </td>
+                                            <td class="text-end"><code>{{ number_format((float) $cw->weight, 4) }}</code></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        @foreach($weightsDefinedWithoutPairwise as $cw)
+                            @php $w = (float) $cw->weight; $pct = min(100, $w * 100); @endphp
+                            <div class="mb-3 mt-3">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span class="fw-medium">{{ $cw->criteria?->code }}</span>
+                                    <span class="text-muted">{{ number_format($pct, 2) }}%</span>
+                                </div>
+                                <div class="progress progress-primary" style="height: 0.75rem;">
+                                    <div class="progress-bar" role="progressbar" style="width: {{ $pct }}%;" aria-valuenow="{{ $pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
             @else
                 <div class="alert alert-warning d-flex align-items-start gap-2 mt-3" role="alert">
                     <i class="ti ti-info-circle fs-4 flex-shrink-0"></i>
-                    <div>Belum ada matriks perbandingan untuk periode ini. Tekan <strong>Hitung AHP (Auto)</strong> untuk menghasilkan matriks dari nilai kepentingan kriteria.</div>
+                    <div>Belum ada matriks perbandingan atau bobot tersimpan untuk kriteria periode ini. Pilih kriteria saat membuat periode, atau tekan <strong>Hitung AHP (Auto)</strong>.</div>
                 </div>
             @endif
         @endif

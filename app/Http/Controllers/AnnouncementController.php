@@ -23,6 +23,10 @@ class AnnouncementController extends Controller
 
     public function store(Request $request)
     {
+        $request->merge([
+            'period_id' => $request->filled('period_id') ? (int) $request->input('period_id') : null,
+        ]);
+
         $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string',
@@ -48,6 +52,10 @@ class AnnouncementController extends Controller
 
     public function update(Request $request, Announcement $announcement)
     {
+        $request->merge([
+            'period_id' => $request->filled('period_id') ? (int) $request->input('period_id') : null,
+        ]);
+
         $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string',
@@ -55,10 +63,13 @@ class AnnouncementController extends Controller
             'is_published' => 'boolean',
         ]);
 
+        $nowPublished = $request->boolean('is_published');
         $announcement->update([
             ...$request->only('title', 'content', 'period_id'),
-            'is_published' => $request->boolean('is_published'),
-            'published_at' => $request->boolean('is_published') && !$announcement->published_at ? now() : $announcement->published_at,
+            'is_published' => $nowPublished,
+            'published_at' => $nowPublished
+                ? ($announcement->published_at ?? now())
+                : null,
         ]);
 
         return redirect()->route('announcements.index')->with('success', 'Pengumuman berhasil diperbarui.');

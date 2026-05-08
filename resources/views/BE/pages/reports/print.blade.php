@@ -179,7 +179,7 @@
         </tbody>
     </table>
 
-    <div class="section-title">Tabel 2 — Nilai pelamar per kriteria</div>
+    <div class="section-title">Tabel 2 — Nilai agregasi pelamar per kriteria (hasil KMKK)</div>
     <table>
         <thead>
             <tr>
@@ -192,15 +192,15 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($evaluations as $applicantId => $applicantEvals)
+            @forelse($aggregatesByApplicant as $aggRows)
             @php
-                $applicant = optional($applicantEvals->first())->applicant;
+                $applicant = optional($aggRows->first())->applicant;
                 $weighted = 0;
                 foreach ($criteria as $criterion) {
                     $w = $weights->get($criterion->id);
-                    $ev = $applicantEvals->firstWhere('criteria_id', $criterion->id);
-                    if ($w && $ev) {
-                        $weighted += (float) $ev->score * (float) $w->weight;
+                    $cell = $aggRows->firstWhere('criteria_id', $criterion->id);
+                    if ($w && $cell) {
+                        $weighted += (float) $cell->aggregated_score * (float) $w->weight;
                     }
                 }
             @endphp
@@ -208,12 +208,16 @@
                 <td class="text-center">{{ $loop->iteration }}</td>
                 <td>{{ $applicant->name ?? '—' }}</td>
                 @foreach($criteria as $criterion)
-                @php $ev = $applicantEvals->firstWhere('criteria_id', $criterion->id); @endphp
-                <td class="text-end num">{{ $ev ? number_format((float) $ev->score, 4) : '—' }}</td>
+                @php $cell = $aggRows->firstWhere('criteria_id', $criterion->id); @endphp
+                <td class="text-end num">{{ $cell ? number_format((float) $cell->aggregated_score, 4) : '—' }}</td>
                 @endforeach
                 <td class="text-end num">{{ number_format($weighted, 6) }}</td>
             </tr>
-            @endforeach
+            @empty
+            <tr>
+                <td colspan="{{ 3 + $criteria->count() }}" class="text-center">Matriks agregasi belum ada — jalankan halaman KMKK.</td>
+            </tr>
+            @endforelse
         </tbody>
     </table>
 

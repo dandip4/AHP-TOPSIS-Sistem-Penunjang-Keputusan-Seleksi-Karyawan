@@ -2,40 +2,70 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Criteria;
 use App\Models\CriteriaWeight;
+use App\Models\PairwiseComparison;
 use App\Models\SelectionPeriod;
 use App\Models\SelectionResult;
 use App\Services\AhpService;
+use App\Services\GroupDecisionAggregator;
 use App\Services\TopsisService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class CalculationController extends Controller
 {
     public function __construct(
         private AhpService $ahpService,
         private TopsisService $topsisService,
+        private GroupDecisionAggregator $groupDecisionAggregator,
     ) {}
+
+    /**
+     * @return Collection<int, \App\Models\Criteria>
+     */
+    private function linkedCriteriaWithSub(?int $periodId): Collection
+    {
+        if (! $periodId) {
+            return collect();
+        }
+
+        $period = SelectionPeriod::find($periodId);
+
+        return $period?->linkedCriteria()->with('subCriteria')->get() ?? collect();
+    }
 
     public function ahp(Request $request)
     {
         $periods = SelectionPeriod::orderBy('name')->get();
         $periodId = $request->get('period_id');
-        $criteria = Criteria::active()->orderBy('code')->get();
+        $criteria = collect();
         $ahpResult = null;
+        /** @var \Illuminate\Support\Collection<int, CriteriaWeight>|null $weightsDefinedWithoutPairwise */
+        $weightsDefinedWithoutPairwise = null;
         $selectedPeriod = null;
 
         if ($periodId) {
-            $selectedPeriod = SelectionPeriod::find($periodId);
-            $existingWeights = CriteriaWeight::where('period_id', $periodId)->count();
+            $periodIdInt = (int) $periodId;
+            $selectedPeriod = SelectionPeriod::find($periodIdInt);
+            $criteria = $this->linkedCriteriaWithSub($periodIdInt);
 
-            if ($existingWeights > 0) {
-                $ahpResult = $this->ahpService->calculateWeights($periodId);
+            $hasPairwise = PairwiseComparison::where('period_id', $periodIdInt)->exists();
+            if ($hasPairwise) {
+                $ahpResult = $this->ahpService->calculateWeights($periodIdInt);
+                if (isset($ahpResult['error'])) {
+                    // Matriks tak lengkap atau korup → tampilkan bobot tersimpan sebagai fallback ringkas jika ada
+                    $fallback = CriteriaWeight::where('period_id', $periodIdInt)->with('criteria')->get()->sortBy('criteria.code')->values();
+                    $weightsDefinedWithoutPairwise = $fallback->isEmpty() ? null : $fallback;
+                    $ahpResult = null;
+                }
+            } else {
+                $loaded = CriteriaWeight::where('period_id', $periodIdInt)->with('criteria')->get()->sortBy('criteria.code')->values();
+                $weightsDefinedWithoutPairwise = $loaded->isEmpty() ? null : $loaded;
             }
         }
 
         return view('BE.pages.calculations.ahp', compact(
-            'periods', 'criteria', 'ahpResult', 'periodId', 'selectedPeriod'
+            'periods', 'criteria', 'ahpResult', 'periodId', 'selectedPeriod', 'weightsDefinedWithoutPairwise'
         ));
     }
 
@@ -45,9 +75,13 @@ class CalculationController extends Controller
             'period_id' => 'required|exists:selection_periods,id',
         ]);
 
-        $periodId = $request->period_id;
-        $criteria = Criteria::active()->orderBy('code')->get();
-        $criteriaIds = $criteria->pluck('id')->toArray();
+        $periodId = (int) $request->period_id;
+        $periodModel = SelectionPeriod::findOrFail($periodId);
+        $criteriaIds = $periodModel->linkedCriteria()->pluck('criteria.id')->sort()->values()->all();
+
+        if ($criteriaIds === []) {
+            return back()->with('error', 'Periode ini belum memiliki kriteria terpilih. Edit periode dan pilih minimal satu kriteria.');
+        }
 
         if ($request->has('matrix')) {
             $matrix = [];
@@ -78,19 +112,18 @@ class CalculationController extends Controller
         $periodId = $request->get('period_id');
         $topsisResult = null;
         $selectedPeriod = null;
-        $criteria = Criteria::active()->orderBy('code')->get();
+        $criteria = collect();
+        $kmkkAggregateReady = false;
 
         if ($periodId) {
             $selectedPeriod = SelectionPeriod::find($periodId);
-            $existingResults = SelectionResult::where('period_id', $periodId)->exists();
-
-            if ($existingResults) {
-                $topsisResult = $this->topsisService->getCalculationData($periodId);
-            }
+            $criteria = $this->linkedCriteriaWithSub((int) $periodId);
+            $topsisResult = $this->topsisService->getCalculationData((int) $periodId);
+            $kmkkAggregateReady = $this->groupDecisionAggregator->isAggregateMatrixComplete((int) $periodId);
         }
 
         return view('BE.pages.calculations.topsis', compact(
-            'periods', 'topsisResult', 'periodId', 'selectedPeriod', 'criteria'
+            'periods', 'topsisResult', 'periodId', 'selectedPeriod', 'criteria', 'kmkkAggregateReady'
         ));
     }
 
@@ -120,10 +153,11 @@ class CalculationController extends Controller
         $periodId = $request->get('period_id');
         $results = collect();
         $selectedPeriod = null;
-        $criteria = Criteria::active()->orderBy('code')->get();
+        $criteria = collect();
 
         if ($periodId) {
             $selectedPeriod = SelectionPeriod::find($periodId);
+            $criteria = $this->linkedCriteriaWithSub((int) $periodId);
             $results = SelectionResult::where('period_id', $periodId)
                 ->with('applicant')
                 ->orderBy('rank')

@@ -67,6 +67,47 @@
                                     </div>
                                     @error('description')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                                 </div>
+
+                                <div class="col-12">
+                                    <div class="border rounded p-3 bg-body">
+                                        <label class="form-label fw-semibold"><i class="ti ti-list-details me-2 text-primary"></i>Kriteria & bobot untuk posisi ini</label>
+                                        <p class="small text-muted mb-3">Centang kriteria yang dipakai pada periode ini. Isi <strong>bobot relatif</strong> (&gt; 0); sistem menormalisasi sehingga jumlah bobot = 1 untuk TOPSIS/AHP dasar.</p>
+                                        @error('criteria_ids')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
+                                        @error('weights')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
+                                        <div class="table-responsive mb-3">
+                                            <table class="table table-sm align-middle mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th style="width:3rem" class="text-center">Pakai</th>
+                                                        <th>Kriteria</th>
+                                                        <th style="width:9rem">Bobot relatif</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($criteriaMaster as $c)
+                                                        @php
+                                                            $picked = collect(old('criteria_ids', []))->map(fn ($v) => (int) $v)->contains((int) $c->id);
+                                                        @endphp
+                                                        <tr>
+                                                            <td class="text-center">
+                                                                <input type="checkbox" class="form-check-input js-period-criterion" name="criteria_ids[]" value="{{ $c->id }}" id="crit_{{ $c->id }}" @checked($picked)>
+                                                            </td>
+                                                            <td>
+                                                                <label class="mb-0 fw-medium" for="crit_{{ $c->id }}">{{ $c->code }} — {{ $c->name }}</label>
+                                                                <div class="small text-muted">{{ $c->type === 'cost' ? 'Biaya' : 'Keuntungan' }}</div>
+                                                            </td>
+                                                            <td>
+                                                                <input type="number" step="any" min="0" name="weights[{{ $c->id }}]" class="form-control form-control-sm @error('weights.'.$c->id) is-invalid @enderror" value="{{ old('weights.'.$c->id, $picked ? '1' : '') }}" placeholder="0" data-criterion-weight="{{ $c->id }}">
+                                                                @error('weights.'.$c->id)<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="small text-muted mb-0"><i class="ti ti-alert-circle me-1"></i>Setelah periode ada penilaian, mengurangi atau mengganti kriteria akan menghapus matriks AHP/agregasi terkait — harus isi ulang penilaian bila kolom baru ditambahkan.</p>
+                                    </div>
+                                </div>
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center mt-4 pt-2 border-top">
                                 <button type="submit" class="btn btn-primary">

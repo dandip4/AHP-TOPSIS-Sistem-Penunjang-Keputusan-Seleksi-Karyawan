@@ -1,697 +1,404 @@
-# Panduan Lengkap: SPK Seleksi Penerimaan Karyawan Baru (AHP & TOPSIS)
+# Panduan Lengkap: SPK Seleksi Penerimaan Karyawan (AHP, KMKK & TOPSIS)
 
-Sistem Pendukung Keputusan untuk seleksi penerimaan karyawan baru menggunakan metode **Analytical Hierarchy Process (AHP)** dan **Technique for Order Preference by Similarity to Ideal Solution (TOPSIS)** berbasis Laravel.
+Sistem Pendukung Keputusan (SPK) untuk seleksi penerimaan karyawan menggunakan:
+
+- **AHP** (Analytical Hierarchy Process) — bobot kriteria per periode seleksi  
+- **KMKK** (Keputusan Multi Kriteria Kelompok / Group Decision Making) — penilaian dari **beberapa evaluator** (mis. HRD, Manager, Direktur), lalu **agregasi** menjadi satu matriks keputusan  
+- **TOPSIS** — perangkingan alternatif pelamar berbasis matriks **nilai yang sudah diagregasi kelompok** dan bobot AHP  
+
+Aplikasi dibangun dengan **Laravel 13**, PHP **8.3+**, biasanya database **MySQL/MariaDB**, antarmuka **Able Pro / Bootstrap**.
 
 ---
 
 ## Daftar Isi
 
-1. [Persyaratan Sistem](#1-persyaratan-sistem)
-2. [Instalasi & Setup](#2-instalasi--setup)
-3. [Menjalankan Aplikasi](#3-menjalankan-aplikasi)
-4. [Akun Default](#4-akun-default)
-5. [Alur Penggunaan Aplikasi](#5-alur-penggunaan-aplikasi)
-   - [Langkah 1: Login](#langkah-1-login)
-   - [Langkah 2: Kelola Data Kriteria](#langkah-2-kelola-data-kriteria)
-   - [Langkah 3: Buat Periode Seleksi](#langkah-3-buat-periode-seleksi)
-   - [Langkah 4: Input Data Pelamar](#langkah-4-input-data-pelamar)
-   - [Langkah 5: Penilaian Pelamar](#langkah-5-penilaian-pelamar)
-   - [Langkah 6: Perhitungan AHP](#langkah-6-perhitungan-ahp)
-   - [Langkah 7: Perhitungan TOPSIS](#langkah-7-perhitungan-topsis)
-   - [Langkah 8: Lihat Hasil Perangkingan](#langkah-8-lihat-hasil-perangkingan)
-   - [Langkah 9: Cetak Laporan](#langkah-9-cetak-laporan)
-   - [Langkah 10: Buat Pengumuman](#langkah-10-buat-pengumuman)
-6. [Struktur Menu Aplikasi](#6-struktur-menu-aplikasi)
-7. [Penjelasan Metode](#7-penjelasan-metode)
-8. [Struktur Database](#8-struktur-database)
-9. [Struktur File Proyek](#9-struktur-file-proyek)
-10. [Troubleshooting](#10-troubleshooting)
+1. [Gambaran Besar Arsitektur](#1-gambaran-besar-arsitektur)
+2. [Persyaratan Sistem](#2-persyaratan-sistem)
+3. [Instalasi & Setup](#3-instalasi--setup)
+4. [Menjalankan Aplikasi](#4-menjalankan-aplikasi)
+5. [Peran Pengguna & Hak Akses](#5-peran-pengguna--hak-akses)
+6. [Akun Demo (Seeder)](#6-akun-demo-seeder)
+7. [Alur End-to-End: Dari Awal Sampai Keputusan](#7-alur-end-to-end-dari-awal-sampai-keputusan)
+   - [Ringkasan diagram alir](#71-ringkasan-diagram-alir)
+   - [Langkah detail](#72-langkah-detail)
+8. [Penjelasan Modul Per Halaman](#8-penjelasan-modul-per-halaman)
+9. [KMKK: Multi Evaluator & Agregasi](#9-kmkk-multi-evaluator--agregasi)
+10. [Penjelasan Metode (AHP, OWA/Yager, TOPSIS)](#10-penjelasan-metode-ahp-owayager-toposis)
+11. [Struktur Database](#11-struktur-database)
+12. [Struktur File Proyek (Ringkas)](#12-struktur-file-proyek-ringkas)
+13. [Perintah Berguna & Troubleshooting](#13-perintah-berguna--troubleshooting)
 
 ---
 
-## 1. Persyaratan Sistem
+## 1. Gambaran Besar Arsitektur
 
-| Komponen      | Versi Minimum            |
-|---------------|--------------------------|
-| PHP           | 8.3 atau lebih baru      |
-| Composer      | 2.x                      |
-| MySQL/MariaDB | 8.0 / 10.4              |
-| Node.js       | 18+ (opsional, untuk Vite) |
-| Web Browser   | Chrome / Firefox / Edge  |
-
-Pastikan juga ekstensi PHP berikut aktif:
-- `pdo_mysql`
-- `mbstring`
-- `openssl`
-- `tokenizer`
-- `xml`
-- `ctype`
-- `json`
-- `bcmath`
+1. **Data master**: kriteria (+ sub-kriteria), periode seleksi, pelamar, **evaluator** (nama/label dan opsional tautan ke akun login).  
+2. **Masukan kelompok**: setiap evaluator mengisi **skor sama** untuk setiap pasangan (pelamar × kriteria), disimpan di tabel **`evaluations`** dengan kolom **`evaluator_id`**.  
+3. **Agregasi KMKK**: Administrator menjalankan proses pada halaman **Evaluasi Kelompok (KMKK)** untuk menghitung **nilai satu per sel** (per periode × pelamar × kriteria). Hasil disimpan di **`aggregated_evaluations`**. Metode yang tersedia: **rata-rata** atau **OWA bahasa Yager** dengan kuantifikasi \(Q(r) = r^{\alpha}\).  
+4. **AHP**: menghasilkan **bobot kriteria per periode** (`criteria_weights`) dari matriks perbandingan berpasangan (`pairwise_comparisons`).  
+5. **TOPSIS**: membaca **hanya matriks agregat** (`aggregated_evaluations`) + bobot AHP (`criteria_weights`), lalu menghitung jarak ideal, nilai preferensi, ranking, dan status lulus untuk kuota tertentu.  
+6. **Laporan & cetak** menampilkan ringkas bobot AHP, nilai pelamar (**agregasi**), rincian penilaian mentah per evaluator (sampel), dan hasil perangkingan.
 
 ---
 
-## 2. Instalasi & Setup
+## 2. Persyaratan Sistem
 
-### 2.1 Clone / Siapkan Proyek
+| Komponen      | Versi minimum            |
+|---------------|---------------------------|
+| PHP           | 8.3 atau lebih baru       |
+| Composer      | 2.x                       |
+| MySQL/MariaDB | Disarankan 8.x / 10.4+   |
+| Web browser   | Chrome / Firefox / Edge   |
 
-Jika belum memiliki proyek, pastikan folder proyek sudah tersedia di komputer Anda.
+Pastikan ekstensi PHP antara lain: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`.
 
-### 2.2 Install Dependensi PHP
+---
 
-Buka terminal di folder proyek, jalankan:
+## 3. Instalasi & Setup
+
+### 3.1 Dependensi PHP
 
 ```bash
 composer install
 ```
 
-### 2.3 Konfigurasi Environment
+### 3.2 File `.env`
 
-Salin file `.env.example` menjadi `.env` (jika belum ada):
-
-```bash
-cp .env.example .env
-```
-
-Edit file `.env` dan sesuaikan konfigurasi database:
+Salin `.env.example` menjadi `.env` (jika belum), lalu atur database dan `APP_URL`:
 
 ```env
+APP_NAME="SPK Seleksi Karyawan"
+APP_URL=http://localhost:8000
+
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=spk_karyawan
+DB_DATABASE=nama_database_anda
 DB_USERNAME=root
 DB_PASSWORD=
 ```
 
-> **Penting:** Ganti `DB_DATABASE` dengan nama database yang Anda inginkan.
-
-### 2.4 Generate Application Key
+### 3.3 Application Key
 
 ```bash
 php artisan key:generate
 ```
 
-### 2.5 Buat Database
-
-Buat database baru di MySQL. Anda bisa menggunakan phpMyAdmin, HeidiSQL, atau command line:
+### 3.4 Buat Database MySQL
 
 ```sql
-CREATE DATABASE spk_karyawan CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE nama_database_anda CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 2.6 Jalankan Migrasi Database
-
-Perintah ini akan membuat semua tabel yang diperlukan:
+### 3.5 Migrasi
 
 ```bash
 php artisan migrate
 ```
 
-Tabel yang akan dibuat:
-| No | Tabel                  | Fungsi                                       |
-|----|------------------------|----------------------------------------------|
-| 1  | `users`                | Data pengguna (Admin & Direktur)              |
-| 2  | `selection_periods`    | Periode seleksi karyawan                      |
-| 3  | `criteria`             | Kriteria penilaian (C1, C2, dst.)             |
-| 4  | `sub_criteria`         | Sub-kriteria dari masing-masing kriteria      |
-| 5  | `applicants`           | Data pelamar / calon karyawan                 |
-| 6  | `pairwise_comparisons` | Matriks perbandingan berpasangan (AHP)        |
-| 7  | `criteria_weights`     | Bobot kriteria hasil perhitungan AHP          |
-| 8  | `evaluations`          | Nilai/skor pelamar per kriteria               |
-| 9  | `selection_results`    | Hasil perangkingan TOPSIS                     |
-| 10 | `announcements`        | Pengumuman hasil seleksi                      |
+Migrasi mencakup antara lain: pengguna; periode; kriteria; sub-kriteria; pelamar; AHP/TOPSIS (**evaluators**, **aggregated_evaluations**, **evaluations** dengan `evaluator_id`); hasil seleksi; pengumuman.
 
-### 2.7 Jalankan Seeder (Data Awal)
-
-Perintah ini akan mengisi data awal: akun pengguna, 7 kriteria, dan sub-kriteria:
+### 3.6 Data Awal (Seeder)
 
 ```bash
 php artisan db:seed
 ```
 
-> **Catatan:** Jika ingin reset semua data dan mulai ulang:
-> ```bash
-> php artisan migrate:fresh --seed
-> ```
+Untuk menghapus semua data dan mengisi ulang dari nol:
+
+```bash
+php artisan migrate:fresh --seed
+```
 
 ---
 
-## 3. Menjalankan Aplikasi
-
-Jalankan server development Laravel:
+## 4. Menjalankan Aplikasi
 
 ```bash
 php artisan serve
 ```
 
-Aplikasi akan berjalan di: **http://localhost:8000**
-
-Buka URL tersebut di browser. Anda akan diarahkan ke halaman login.
+Buka **`http://localhost:8000`**. Anda akan diarahkan ke halaman login jika belum masuk.
 
 ---
 
-## 4. Akun Default
+## 5. Peran Pengguna & Hak Akses
 
-Setelah menjalankan seeder, tersedia 2 akun berikut:
+| Peran (`users.role`) | Keterangan | Akses menu utama |
+|---------------------|-------------|-------------------|
+| **admin** | Pengelola penuh | Master data (periode, kriteria, pelamar, evaluator), penilaian (pilih evaluator), KMKK (agregasi), AHP/TOPSIS/hasil, laporan, pengumuman |
+| **evaluator** | Anggota kelompok penilai (HRD/Manager, dll.) | Dashboard, Penilaian (hanya skor evaluator sendiri), KMKK (lihat tanpa tombol rebuild), laporan seleksi |
+| **direktur** | Pimpinan; bisa juga evaluator jika ada **rekaman evaluator** tertaut ke akun tersebut | Dashboard, penilaian (jika terhubung sebagai evaluator), KMKK (lihat), laporan |
 
-| Role      | Email              | Password   | Hak Akses                                   |
-|-----------|--------------------|------------|----------------------------------------------|
-| Admin     | admin@spk.com      | password   | Semua fitur (CRUD, perhitungan, laporan)     |
-| Direktur  | direktur@spk.com   | password   | Dashboard, laporan seleksi, pengumuman       |
-
-> **Rekomendasi:** Segera ubah password setelah login pertama kali di lingkungan produksi.
-
----
-
-## 5. Alur Penggunaan Aplikasi
-
-Berikut adalah alur lengkap penggunaan sistem dari awal hingga menghasilkan keputusan:
-
-```
-Login → Kelola Kriteria → Buat Periode → Input Pelamar → Penilaian → AHP → TOPSIS → Hasil → Laporan → Pengumuman
-```
-
-### Langkah 1: Login
-
-1. Buka `http://localhost:8000/login`
-2. Masukkan email dan password
-3. Klik tombol **Login**
-4. Anda akan diarahkan ke **Dashboard**
-
-Dashboard menampilkan ringkasan:
-- Total periode seleksi
-- Total pelamar
-- Jumlah kriteria aktif
-- Total karyawan yang lulus seleksi
-- Tabel periode terbaru dan hasil seleksi terbaru
+Middleware **`role`** (alias dari `CheckRole`) membatasi rute seperti CRUD master, **AHP**, **TOPSIS**, **pengumuman**, CRUD **evaluator**, serta **POST `/kmkk/rebuild`** — hanya **admin**.
 
 ---
 
-### Langkah 2: Kelola Data Kriteria
+## 6. Akun Demo (Seeder)
 
-**Menu:** Sidebar > **Data Kriteria**
+Setelah **`php artisan db:seed`** atau **`migrate:fresh --seed`**, sekurunya contoh akun mengikuti pola berikut (**password untuk semua: `password`**):
 
-Secara default, sistem sudah memiliki 7 kriteria dari jurnal:
+| Peran     | Email            | Catatan |
+|-----------|-----------------|--------|
+| Admin     | admin@spk.com   | Mengelola semua konfigurasi dan agregasi KMKK |
+| Direktur  | direktur@spk.com| Bisa akses laporan/KMKK; juga **terhubung** sebagai salah satu evaluator (lihat seed) |
+| Evaluator | hrd@spk.com      | Mengisi penilaian sebagai evaluator HRD |
+| Evaluator | manager@spk.com  | Mengisi penilaian sebagai evaluator Manager |
 
-| Kode | Kriteria                 | Kepentingan | Tipe    |
-|------|--------------------------|-------------|---------|
-| C1   | Pendidikan Terakhir      | 9           | Benefit |
-| C2   | Usia                     | 8           | Benefit |
-| C3   | IPK                      | 6           | Benefit |
-| C4   | Kemampuan Bahasa Asing   | 5           | Benefit |
-| C5   | Wawancara                | 4           | Benefit |
-| C6   | Pengalaman Kerja         | 3           | Benefit |
-| C7   | Psikotest                | 2           | Benefit |
-
-**Operasi yang tersedia:**
-
-#### a. Tambah Kriteria Baru
-1. Klik tombol **Tambah Kriteria**
-2. Isi form:
-   - **Kode**: Kode unik (contoh: C8)
-   - **Nama**: Nama kriteria
-   - **Tipe**: `Benefit` (semakin tinggi semakin baik) atau `Cost` (semakin rendah semakin baik)
-   - **Kepentingan**: Nilai 1-9 (menentukan prioritas di AHP, semakin besar semakin penting)
-   - **Deskripsi**: Opsional
-3. Klik **Simpan**
-
-#### b. Kelola Sub-Kriteria
-Setiap kriteria memiliki sub-kriteria untuk mempermudah penilaian:
-
-1. Di halaman Data Kriteria, klik link **Sub-kriteria (n)** pada kriteria yang diinginkan
-2. Panel sub-kriteria akan terbuka
-3. Isi form: **Nama**, **Nilai** (1-10), **Deskripsi** (opsional)
-4. Klik tombol **+** untuk menyimpan
-
-Contoh sub-kriteria C1 (Pendidikan Terakhir):
-| Nama     | Nilai |
-|----------|-------|
-| SMA/SMK  | 1     |
-| D3       | 2     |
-| S1       | 3     |
-| S2       | 4     |
-| S3       | 5     |
-
-#### c. Aktifkan/Nonaktifkan Kriteria
-Klik ikon toggle pada kolom **Aksi** untuk mengaktifkan atau menonaktifkan kriteria. Kriteria nonaktif tidak akan digunakan dalam perhitungan.
-
-#### d. Edit & Hapus Kriteria
-Gunakan tombol edit (pensil) atau hapus (tong sampah) pada kolom Aksi.
+> Di produksi **wajib** mengganti password dan menyusun evaluators + user sesuai kebijakan perusahaan.
 
 ---
 
-### Langkah 3: Buat Periode Seleksi
+## 7. Alur End-to-End: Dari Awal Sampai Keputusan
 
-**Menu:** Sidebar > **Periode Seleksi**
+### 7.1 Ringkasan diagram alir
 
-Periode seleksi merupakan "sesi" rekrutmen. Setiap kali perusahaan membuka lowongan, buat periode baru.
+Urutan yang **disarankan** dan selaras dengan kode aplikasi:
 
-1. Klik **Tambah Periode**
-2. Isi form:
-   - **Nama Periode**: Contoh: "Seleksi Karyawan Batch 1 - 2026"
-   - **Posisi**: Contoh: "Staff Administrasi"
-   - **Tanggal Mulai**: Tanggal pembukaan seleksi
-   - **Tanggal Selesai**: Tanggal penutupan seleksi
-   - **Deskripsi**: Keterangan tambahan (opsional)
-3. Klik **Simpan**
-
-**Status Periode:**
-| Status      | Keterangan                                    |
-|-------------|-----------------------------------------------|
-| `Draft`     | Baru dibuat, belum aktif                      |
-| `Dibuka`    | Sedang menerima pelamar                       |
-| `Ditutup`   | Tidak menerima pelamar baru, proses seleksi   |
-| `Selesai`   | Seleksi telah selesai                         |
-
-Ubah status melalui halaman **Edit Periode**.
-
----
-
-### Langkah 4: Input Data Pelamar
-
-**Menu:** Sidebar > **Data Pelamar**
-
-1. Pilih **Periode Seleksi** dari dropdown filter (opsional, untuk menyaring tampilan)
-2. Klik **Tambah Pelamar**
-3. Isi form:
-   - **Periode**: Pilih periode seleksi
-   - **Nama Lengkap**: Nama pelamar
-   - **Email**: Alamat email
-   - **Telepon**: Nomor telepon
-   - **Jenis Kelamin**: Laki-laki / Perempuan
-   - **Tanggal Lahir**: Format tanggal
-   - **Pendidikan Terakhir**: SMA/SMK, D3, S1, S2, S3
-   - **Jurusan**: Bidang studi
-   - **IPK**: Indeks Prestasi Kumulatif (0.00 - 4.00)
-   - **Usia**: Dalam tahun (17-60)
-   - **Alamat**: Alamat lengkap
-4. Klik **Simpan**
-5. Ulangi untuk semua pelamar
-
-> **Tips:** Anda bisa memfilter pelamar berdasarkan periode menggunakan dropdown di atas tabel.
-
----
-
-### Langkah 5: Penilaian Pelamar
-
-**Menu:** Sidebar > **Penilaian Pelamar**
-
-Di halaman ini, Anda memberikan skor/nilai untuk setiap pelamar terhadap setiap kriteria.
-
-1. Pilih **Periode Seleksi** dari dropdown
-2. Sistem akan menampilkan tabel dengan:
-   - **Baris**: Nama pelamar
-   - **Kolom**: Kriteria (C1, C2, C3, dst.)
-   - **Sel**: Dropdown untuk memilih nilai
-3. Untuk setiap pelamar, pilih nilai pada setiap kolom kriteria:
-   - Jika kriteria memiliki sub-kriteria, dropdown akan menampilkan nama sub-kriteria beserta nilainya
-   - Jika tidak ada sub-kriteria, dropdown menampilkan angka 1-5
-4. Setelah semua terisi, klik **Simpan Penilaian**
-
-**Contoh pengisian (berdasarkan jurnal):**
-
-| Pelamar          | C1 | C2 | C3 | C4 | C5 | C6 | C7 |
-|------------------|----|----|----|----|----|----|----|
-| Aldefa Pratiwi   | 5  | 5  | 5  | 4  | 5  | 3  | 5  |
-| Novela Andriyani | 5  | 4  | 5  | 3  | 4  | 3  | 3  |
-| Mhd. Izzu Salam  | 3  | 5  | 3  | 3  | 4  | 4  | 2  |
-| dst...           |    |    |    |    |    |    |    |
-
-> **Penting:** Pastikan semua sel terisi sebelum menyimpan. Penilaian bisa diubah kapan saja dengan mengulang proses ini.
-
----
-
-### Langkah 6: Perhitungan AHP
-
-**Menu:** Sidebar > **Perhitungan AHP**
-
-Metode AHP digunakan untuk menentukan **bobot** setiap kriteria berdasarkan tingkat kepentingannya.
-
-1. Pilih **Periode Seleksi** dari dropdown
-2. Klik tombol **Hitung AHP (Auto)**
-   - Sistem akan otomatis membuat **matriks perbandingan berpasangan** berdasarkan nilai kepentingan yang sudah diatur di Data Kriteria
-3. Sistem menampilkan hasil perhitungan:
-
-#### a. Matriks Perbandingan Berpasangan
-Tabel perbandingan antar kriteria. Diagonal bernilai 1 (kriteria dibandingkan dengan dirinya sendiri).
-
-#### b. Matriks Ternormalisasi
-Setiap nilai dibagi dengan jumlah kolomnya.
-
-#### c. Bobot Prioritas
-Rata-rata baris dari matriks ternormalisasi. Ini adalah **bobot** yang akan digunakan di TOPSIS.
-
-Contoh hasil bobot:
-| Kriteria                | Bobot  |
-|-------------------------|--------|
-| C1 - Pendidikan Terakhir| 0.2432 |
-| C2 - Usia               | 0.2162 |
-| C3 - IPK                | 0.1622 |
-| C4 - Bahasa Asing       | 0.1351 |
-| C5 - Wawancara          | 0.1081 |
-| C6 - Pengalaman Kerja   | 0.0811 |
-| C7 - Psikotest          | 0.0541 |
-
-Bobot ditampilkan juga sebagai **progress bar** untuk visualisasi.
-
-#### d. Uji Konsistensi
-- **Lambda Max**: Eigenvalue maksimal
-- **CI (Consistency Index)**: Indeks konsistensi
-- **RI (Random Index)**: Indeks random berdasarkan jumlah kriteria
-- **CR (Consistency Ratio)**: CI / RI
-
-> **Aturan:** Jika **CR ≤ 0.1 (10%)**, maka penilaian dianggap **konsisten** dan bobot valid untuk digunakan. Jika CR > 0.1, perlu dilakukan perbaikan nilai kepentingan.
-
----
-
-### Langkah 7: Perhitungan TOPSIS
-
-**Menu:** Sidebar > **Perhitungan TOPSIS**
-
-Metode TOPSIS digunakan untuk **merangking** pelamar berdasarkan nilai dan bobot kriteria.
-
-1. Pilih **Periode Seleksi** dari dropdown
-2. Isi **Jumlah yang Diterima** (contoh: 3 = tiga pelamar teratas akan berstatus "Lulus")
-3. Klik **Hitung TOPSIS**
-4. Sistem menampilkan detail perhitungan:
-
-#### a. Matriks Keputusan
-Tabel nilai mentah setiap pelamar untuk setiap kriteria.
-
-#### b. Matriks Ternormalisasi
-Setiap nilai dibagi dengan akar dari jumlah kuadrat kolom:
-
-```
-r_ij = x_ij / sqrt(Σ x_ij²)
+```text
+Login
+  → [Admin] Data Kriteria & Sub-kriteria
+  → [Admin] Periode Seleksi
+  → [Admin] Data Pelamar (per periode)
+  → [Admin] Data Evaluator (nama, label, tautan user opsional)
+  → Penilaian Pelamar (setiap evaluator mengisi matriks sendiri; admin bisa ganti dropdown evaluator)
+  → [Admin] Evaluasi Kelompok (KMKK): hitung matriks agregasi (rata-rata atau OWA)
+  → [Admin] Perhitungan AHP (bobot per periode)
+  → [Admin] Perhitungan TOPSIS (pakai matriks agregat + bobot AHP; set kuota lulus)
+  → Hasil Perangkingan, Laporan, Cetak
+  → [Admin] Pengumuman (opsional)
 ```
 
-#### c. Matriks Terbobot
-Nilai ternormalisasi dikalikan bobot kriteria dari AHP:
+**Catatan penting:** TOPSIS **tidak** langsung membaca baris `evaluations` per evaluator; ia memakai **`aggregated_evaluations`**. Jika agregasi belum lengkap atau belum dihitung, sistem menampilkan pesan agar menyelesaikan langkah KMKK.
 
-```
-v_ij = w_j × r_ij
-```
+### 7.2 Langkah detail
 
-#### d. Solusi Ideal
-- **A+ (Ideal Positif)**: Nilai terbaik per kriteria (max untuk benefit, min untuk cost)
-- **A- (Ideal Negatif)**: Nilai terburuk per kriteria (min untuk benefit, max untuk cost)
+#### A. Login
 
-#### e. Jarak & Nilai Preferensi
-- **D+**: Jarak ke solusi ideal positif
-- **D-**: Jarak ke solusi ideal negatif
-- **Nilai Preferensi**: D- / (D+ + D-)
+1. Buka `/login`.  
+2. Masuk dengan salah satu akun yang valid.  
+3. Dashboard menampilkan ringkasan (periode, pelamar, kriteria, hasil lulus, grafik, dll.).
 
-Semakin tinggi nilai preferensi, semakin baik pelamar tersebut.
+#### B. [Admin] Data Kriteria
 
-#### f. Hasil Perangkingan
-Tabel akhir dengan ranking, nama pelamar, nilai preferensi, dan status (Lulus/Tidak Lulus).
+**Menu:** Data Kriteria  
+
+- Tambah/edit kriteria: kode, nama, tipe **benefit/cost**, **kepentingan** (untuk pembuatan matriks AHP otomatis), status aktif.  
+- Sub-kriteria: dipakai sebagai opsi nilai pada dropdown penilaian (nilai numerik 1–5 sesuai desain seed).  
+- Kriteria nonaktif tidak ikut dalam perhitungan.
+
+#### C. [Admin] Periode Seleksi
+
+**Menu:** Periode Seleksi  
+
+- Buat periode: nama, posisi, tanggal, status (draft / dibuka / ditutup / selesai), pembuat.  
+- Kolom tambahan di basis data: **`aggregation_method`**, **`owa_alpha`**, **`aggregation_computed_at`** diisi saat agregasi KMKK dijalankan.
+
+#### D. [Admin] Data Pelamar
+
+**Menu:** Data Pelamar  
+
+- Setiap pelamar **terikat** ke satu `period_id`.  
+- Lengkapi biodata sesuai form (email, pendidikan, IPK, usia, dll.).
+
+#### E. [Admin] Data Evaluator (KMKK)
+
+**Menu:** Data Evaluator (KMKK)  
+
+- Definisikan evaluator: nama, kode unik (opsional), label peran (mis. "HRD"), urutan tampil, aktif/nonaktif.  
+- **Tautkan ke user** (opsional): satu user maksimal satu evaluator; memungkinkan login evaluator untuk mengisi penilaian sendiri.  
+- Evaluator yang masih punya baris di `evaluations` **tidak boleh dihapus** (pencegahan integritas data).
+
+#### F. Penilaian Pelamar (multi-evaluator)
+
+**Menu:** Penilaian Pelamar  
+
+- **Admin:** pilih **periode** dan **evaluator yang sedang aktif** (dropdown), lalu isi matriks skor; simpan. Ulangi untuk evaluator lain sampai semua anggota kelompok selesai.  
+- **Evaluator (login):** hanya melihat dan menyimpan skor **untuk dirinya sendiri** (tanpa memilih evaluator lain).  
+- Skor per sel disimpan dengan **unik** `(period_id, applicant_id, criteria_id, evaluator_id)`.  
+- Setiap kali menyimpan penilaian untuk suatu periode, **matriks agregat** untuk periode itu **dikosongkan** (harus dihitung ulang di KMKK).
+
+#### G. [Admin] Evaluasi Kelompok (KMKK)
+
+**Menu:** Evaluasi Kelompok (KMKK) — rute: `/kmkk`  
+
+1. Pilih **periode**.  
+2. Lihat tabel **penilaian mentah** (per pelamar, kriteria, evaluator).  
+3. Pilih metode agregasi:  
+   - **Rata-rata aritmetik** — rata-rata skor semua evaluator yang ada pada sel tersebut.  
+   - **OWA (`owa_most`)** — OWA bahasa Yager dengan \(Q(r)=r^{\alpha}\) (\(\alpha>1\)); parameter **α** bisa diisi (default konsisten dengan kolom di periode).  
+4. Klik **Hitung matriks agregat**.  
+
+Sistem mengharuskan **setiap kombinasi (pelamar × kriteria aktif)** memiliki **minimal satu** nilai evaluator. Jika ada sel kosong total, agregasi gagal dan pesan kesalahan ditampilkan.
+
+#### H. [Admin] Perhitungan AHP
+
+**Menu:** Perhitungan AHP  
+
+1. Pilih periode.  
+2. Jalankan hitungan (otomatis dari nilai kepentingan kriteria atau input matriks jika Anda extend UI manual).  
+3. Perhatikan **CR** konsistensi: idealnya **≤ 0,1**.
+
+#### I. [Admin] Perhitungan TOPSIS
+
+**Menu:** Perhitungan TOPSIS  
+
+1. Pastikan **KMKK** sudah menghasilkan matriks agregat lengkap untuk periode yang sama.  
+2. Pastikan **AHP** sudah menghasilkan bobot untuk periode tersebut.  
+3. Isi **jumlah yang diterima** (kuota "lulus") jika ingin membatasi secara berperingkat teratas `N`.  
+4. Jalankan hitungan. Preferensi jarak dan ranking disimpan ke **`selection_results`**.
+
+#### J. Hasil Perangkingan & Laporan
+
+- **Hasil Perangkingan:** ringkas per periode.  
+- **Laporan seleksi:** bobot kriteria; **nilai agregat** pelamar × kriteria; sampel penilaian mentah **per evaluator**; tabel ranking.  
+- **Cetak:** versi print-friendly dari ringkasan utama.
+
+#### K. [Admin] Pengumuman
+
+Mengatur teks pengumuman terhubung dengan periode (opsional) dan publikasi.
 
 ---
 
-### Langkah 8: Lihat Hasil Perangkingan
+## 8. Penjelasan Modul Per Halaman
 
-**Menu:** Sidebar > **Hasil Perangkingan**
-
-Halaman ini menampilkan tabel ringkas hasil akhir seleksi:
-
-| Rank | Nama Pelamar    | D+     | D-     | Nilai Preferensi | Status      |
-|------|-----------------|--------|--------|------------------|-------------|
-| 1    | Aldefa Pratiwi  | 0.0149 | 0.1316 | 0.8978           | Lulus       |
-| 2    | Mhd. Rifqi      | 0.0362 | 0.1258 | 0.7765           | Lulus       |
-| 3    | Dewa Abid       | 0.0397 | 0.1155 | 0.7444           | Lulus       |
-| ...  | ...             | ...    | ...    | ...              | Tidak Lulus |
-
-Pelamar dengan status **Lulus** ditandai dengan baris berwarna hijau.
-
----
-
-### Langkah 9: Cetak Laporan
-
-**Menu:** Sidebar > **Laporan Seleksi**
-
-1. Pilih **Periode Seleksi** dari dropdown
-2. Halaman akan menampilkan:
-   - Informasi periode (nama, posisi, tanggal, pembuat)
-   - Tabel bobot kriteria
-   - Tabel nilai pelamar per kriteria beserta total terbobot
-   - Tabel hasil akhir seleksi (rank, nama, nilai preferensi, status)
-3. Klik tombol **Cetak Laporan**
-4. Browser akan membuka tab baru dengan versi cetak
-5. Dialog print akan otomatis muncul
-6. Pilih printer atau "Save as PDF" lalu klik **Print**
-
-Laporan cetak mencakup:
-- Header perusahaan
-- 3 tabel data lengkap
-- Area tanda tangan (Yang Membuat Laporan & Mengetahui Direktur)
-- Tanggal dan waktu cetak
+| Modul | Fungsi |
+|-------|--------|
+| Dashboard | Statistik dan grafik; pintasan informasi |
+| Periode seleksi | Sesi rekruut satu periode satu set pelamar dan penilaian |
+| Data Kriteria | Definisi C1–Cn, sub-skala penilaian, benefit/cost |
+| Data Pelamar | Kandidat per periode |
+| Data evaluator | Pengambil keputusan kelompok (KMKK) dan taut ke user |
+| Penilaian Pelamar | Matriks skor **per evaluator** |
+| Evaluasi Kelompok (KMKK) | Agregasi skor evaluator → **`aggregated_evaluations`** |
+| Perhitungan AHP | Bobot kriteria per periode |
+| Perhitungan TOPSIS | Ranking dari matriks agregat + bobot |
+| Hasil perangkingan | Ringkasan hasil tersimpan |
+| Laporan / cetak | Dokumentasi keputusan |
+| Pengumuman | Komunikasi hasil kepada pelamar/pekerja |
 
 ---
 
-### Langkah 10: Buat Pengumuman
+## 9. KMKK: Multi Evaluator & Agregasi
 
-**Menu:** Sidebar > **Pengumuman**
+### Mengapa ada dua tabel (`evaluations` vs `aggregated_evaluations`)?
 
-1. Klik **Tambah Pengumuman**
-2. Isi form:
-   - **Judul**: Judul pengumuman
-   - **Periode**: Pilih periode terkait (opsional)
-   - **Konten**: Isi pengumuman lengkap
-   - **Publish**: Centang jika ingin langsung dipublikasikan
-3. Klik **Simpan**
+- **`evaluations`** = jejak lengkap pendapat individu evaluator (audit, transparansi, analisis perbedaan opini).  
+- **`aggregated_evaluations`** = **satu nilai sintetik** per (periode, pelamar, kriteria) yang menjadi **satunya "matriks keputusan TOPSIS** agar konsisten dengan model hybrid **kelompok + TOPSIS klasik satu matriks**.
 
-Pengumuman bisa diedit atau dihapus kapan saja melalui kolom Aksi di tabel pengumuman.
+### Kapan harus menghitung ulang agregasi?
+
+- Setelah **menyimpan** penilaian (per evaluator) untuk sebuah periode, agregasi lama untuk periode tersebut **dibatalkan secara logis** (dihapus dari database). Lakukan lagi **Hitung matriks agregat** di halaman **KMKK**.
+
+### Rumus OWA sederhana (Yager linguistic quantifier)
+
+Untuk sebuah sel dengan sekumpulan skor yang diurut naik \(s_{(1)}\le\dots\le s_{(n)}\) dan \(Q(r)=r^{\alpha},\ \alpha>1\):
+
+\[ w_j = Q(j/n)-Q((j-1)/n),\quad\text{OWL value}=\sum_j w_j,s_{(j)} \]
+
+Implementasi tepat ada di **`App\Services\GroupDecisionAggregator`**.
 
 ---
 
-## 6. Struktur Menu Aplikasi
+## 10. Penjelasan Metode (AHP, OWA/Yager, TOPSIS)
 
-### Menu Admin (Role: Admin)
+### AHP
 
-```
-Menu Utama
-├── Dashboard
-│
-├── Master Data
-│   ├── Periode Seleksi
-│   ├── Data Kriteria
-│   └── Data Pelamar
-│
-├── Penilaian & Perhitungan
-│   ├── Penilaian Pelamar
-│   ├── Perhitungan AHP
-│   ├── Perhitungan TOPSIS
-│   └── Hasil Perangkingan
-│
-└── Laporan & Info
-    ├── Laporan Seleksi
-    └── Pengumuman
-```
+Digunakan untuk **bobot kriteria**. Matriks perbandingan berpasangan bisa dihasilkan otomatis dari **field kepentingan** kriteria. Uji konsistensi **CR ≤ 0,1**.
 
-### Menu Direktur (Role: Direktur)
+### OWA dalam konteks kelompok (ringkas)
+
+Digunakan hanya sebagai **aggregator** atas skor para evaluator per sel. Ini **bukan** pengganti TOPSIS.
+
+### TOPSIS
+
+- Input matriks: **aggregated_scores** \(\times\) kriteria bobot \(w_j\) dari AHP  
+- Tahapan: normalisasi, pembobotan jarak Euclidean ke solusi ideal positif dan negatif, nilai preferensi, ranking.
+
+Detail rumus bisa dilihat juga di **`AhpService`** dan **`TopsisService`**.
+
+---
+
+## 11. Struktur Database
+
+Versi tinggi (kolom utama; lihat migrations untuk lengkapnya):
 
 ```
-Menu Utama
-├── Dashboard
-│
-└── Laporan & Info
-    ├── Laporan Seleksi
-    └── Pengumuman
+users                          — nama, email, password, role (varchar: admin/evaluator/direktur, dll.)
+
+selection_periods              — nama, tanggal, status, pembuat ...
+                               + aggregation_method, owa_alpha, aggregation_computed_at
+
+evaluators                     — nama, code, role_label, user_id (nullable uniq), sort_order, is_active
+
+criteria, sub_criteria         — struktur dan skala nilai penilaian
+
+applicants                     — pelamar bound ke period_id
+
+evaluations                    — period_id, applicant_id, criteria_id, evaluator_id, score
+                               — UNIQUE (period_id, applicant_id, criteria_id, evaluator_id)
+
+aggregated_evaluations         — period_id, applicant_id, criteria_id, aggregated_score,
+                                 aggregation_method, evaluator_count_used
+                               — UNIQUE (period_id, applicant_id, criteria_id)
+
+pairwise_comparisons           — untuk AHP
+criteria_weights               — bobot hasil AHP per periode
+selection_results              — ranking TOPSIS, status lulus/gagal
+announcements                  — pengumuman
 ```
 
 ---
 
-## 7. Penjelasan Metode
-
-### AHP (Analytical Hierarchy Process)
-
-AHP dikembangkan oleh Thomas L. Saaty untuk menguraikan masalah multi-kriteria menjadi hierarki. Dalam sistem ini:
-
-1. **Struktur Hierarki**: Tujuan (seleksi karyawan) → Kriteria (C1-C7) → Alternatif (pelamar)
-2. **Matriks Perbandingan Berpasangan**: Setiap kriteria dibandingkan satu sama lain berdasarkan skala kepentingan 1-9
-3. **Bobot Prioritas**: Dihitung dari normalisasi matriks perbandingan
-4. **Uji Konsistensi**: CR harus ≤ 0.1 agar penilaian valid
-
-**Skala Kepentingan AHP:**
-
-| Nilai | Definisi                                              |
-|-------|-------------------------------------------------------|
-| 1     | Kedua elemen sama pentingnya                          |
-| 3     | Elemen yang satu sedikit lebih penting                |
-| 5     | Elemen yang satu lebih penting                        |
-| 7     | Satu elemen jelas lebih mutlak penting                |
-| 9     | Satu elemen mutlak penting                            |
-| 2,4,6,8 | Nilai-nilai antara dua nilai pertimbangan berdekatan |
-
-### TOPSIS (Technique for Order Preference by Similarity to Ideal Solution)
-
-TOPSIS memilih alternatif yang memiliki jarak terdekat ke solusi ideal positif dan jarak terjauh dari solusi ideal negatif.
-
-**Langkah-langkah:**
-1. Membuat matriks keputusan ternormalisasi
-2. Membuat matriks keputusan terbobot (menggunakan bobot dari AHP)
-3. Menentukan solusi ideal positif (A+) dan negatif (A-)
-4. Menghitung jarak setiap alternatif ke A+ dan A-
-5. Menghitung nilai preferensi: `V_i = D_i- / (D_i+ + D_i-)`
-6. Merangking alternatif berdasarkan nilai preferensi (tertinggi = terbaik)
-
----
-
-## 8. Struktur Database
-
-```
-users
-├── id, name, email, password, role (admin/direktur)
-
-selection_periods
-├── id, name, position, start_date, end_date, description, status, created_by
-
-criteria
-├── id, code, name, type (benefit/cost), importance, description, is_active
-
-sub_criteria
-├── id, criteria_id (FK), name, value, description
-
-applicants
-├── id, period_id (FK), name, email, phone, gender, birth_date, education, major, gpa, age, address
-
-pairwise_comparisons
-├── id, period_id (FK), criteria_row_id (FK), criteria_col_id (FK), value
-
-criteria_weights
-├── id, period_id (FK), criteria_id (FK), weight
-
-evaluations
-├── id, period_id (FK), applicant_id (FK), criteria_id (FK), score
-
-selection_results
-├── id, period_id (FK), applicant_id (FK), preference_value, positive_distance, negative_distance, rank, status
-
-announcements
-├── id, title, content, period_id (FK), is_published, published_at, created_by
-```
-
----
-
-## 9. Struktur File Proyek
+## 12. Struktur File Proyek (Ringkas)
 
 ```
 app/
-├── Http/
-│   ├── Controllers/
-│   │   ├── AuthController.php           # Login & Logout
-│   │   ├── DashboardController.php      # Halaman dashboard
-│   │   ├── CriteriaController.php       # CRUD kriteria & sub-kriteria
-│   │   ├── SelectionPeriodController.php # CRUD periode seleksi
-│   │   ├── ApplicantController.php      # CRUD data pelamar
-│   │   ├── EvaluationController.php     # Penilaian pelamar
-│   │   ├── CalculationController.php    # AHP & TOPSIS
-│   │   ├── ReportController.php         # Laporan & cetak
-│   │   └── AnnouncementController.php   # Pengumuman
-│   └── Middleware/
-│       └── CheckRole.php                # Middleware cek role
-├── Models/
-│   ├── User.php
-│   ├── SelectionPeriod.php
-│   ├── Criteria.php
-│   ├── SubCriteria.php
-│   ├── Applicant.php
-│   ├── PairwiseComparison.php
-│   ├── CriteriaWeight.php
-│   ├── Evaluation.php
-│   ├── SelectionResult.php
-│   └── Announcement.php
-└── Services/
-    ├── AhpService.php                   # Logika perhitungan AHP
-    └── TopsisService.php                # Logika perhitungan TOPSIS
+  Http/Controllers/
+    AuthController.php
+    DashboardController.php
+    CriteriaController.php, SelectionPeriodController.php, ApplicantController.php
+    EvaluatorController.php              — CRUD evaluator
+    EvaluationController.php              — Penilaian per evaluator (+ clear agregasi)
+    KmkkGroupResultController.php        — Halaman KMKK + POST rebuild agregasi
+    CalculationController.php             — AHP & TOPSIS
+    ReportController.php
+    AnnouncementController.php
+  Http/Middleware/CheckRole.php
+  Models/ ...
+  Services/
+    AhpService.php
+    TopsisService.php                     — Baca aggregated_evaluations
+    GroupDecisionAggregator.php           — Rata-rata & OWA, simpan aggregated_evaluations
 
-database/
-├── migrations/                          # 12 file migrasi
-└── seeders/
-    └── DatabaseSeeder.php               # Data awal (user, kriteria, sub-kriteria)
+database/migrations/...
+database/seeders/DatabaseSeeder.php       — Pengguna demo, evaluator, penilaian 3 evaluator, rebuild agregasi
 
-resources/views/BE/
-├── layouts/
-│   ├── main.blade.php                   # Layout utama
-│   ├── css.blade.php                    # CSS imports
-│   ├── script.blade.php                 # JavaScript imports
-│   ├── menu.blade.php                   # Sidebar menu
-│   ├── header.blade.php                 # Header bar
-│   └── footer.blade.php                # Footer
-└── pages/
-    ├── auth/login.blade.php             # Halaman login
-    ├── dashboard.blade.php              # Dashboard
-    ├── criteria/                         # CRUD kriteria
-    │   ├── index.blade.php
-    │   ├── create.blade.php
-    │   └── edit.blade.php
-    ├── periods/                          # CRUD periode
-    │   ├── index.blade.php
-    │   ├── create.blade.php
-    │   ├── edit.blade.php
-    │   └── show.blade.php
-    ├── applicants/                       # CRUD pelamar
-    │   ├── index.blade.php
-    │   ├── create.blade.php
-    │   └── edit.blade.php
-    ├── evaluations/
-    │   └── index.blade.php              # Matriks penilaian
-    ├── calculations/
-    │   ├── ahp.blade.php                # Perhitungan AHP
-    │   ├── topsis.blade.php             # Perhitungan TOPSIS
-    │   └── results.blade.php            # Hasil perangkingan
-    ├── reports/
-    │   ├── index.blade.php              # Laporan seleksi
-    │   └── print.blade.php              # Versi cetak
-    └── announcements/                   # CRUD pengumuman
-        ├── index.blade.php
-        ├── create.blade.php
-        └── edit.blade.php
-
-routes/
-└── web.php                              # Semua route aplikasi
+resources/views/BE/...
+routes/web.php
 ```
 
 ---
 
-## 10. Troubleshooting
+## 13. Perintah Berguna & Troubleshooting
 
-### Masalah Umum
-
-| Masalah | Solusi |
-|---------|--------|
-| Halaman blank / error 500 | Jalankan `php artisan config:clear && php artisan cache:clear` |
-| Tabel tidak ditemukan | Jalankan `php artisan migrate` |
-| Login gagal | Pastikan seeder sudah dijalankan: `php artisan db:seed` |
-| CR > 0.1 (tidak konsisten) | Sesuaikan nilai kepentingan kriteria agar lebih konsisten |
-| Perhitungan TOPSIS error | Pastikan AHP sudah dihitung terlebih dahulu untuk periode tersebut |
-| Penilaian kosong | Isi semua nilai pelamar di halaman Penilaian Pelamar |
-| DataTables tidak muncul | Refresh halaman (Ctrl+F5), pastikan koneksi internet aktif |
-
-### Perintah Artisan Berguna
+| Masalah | Tindakan yang disarankan |
+|---------|---------------------------|
+| TOPSIS: pesan kurang lengkap dari KMKK | Buka **KMKK** untuk periode yang sama dan pastikan setiap cel pelamar × kriteria punya minimal satu penilaian, lalu **Hitung matriks agregat** lagi |
+| TOPSIS minta jalankan AHP dulu | Hitung **AHP** untuk periode tersebut sampai ada `criteria_weights` |
+| Setelah menyimpan penilaian, ranking TOPSIS hilang/perlu konfirmasi | Normal: agregasi dikosongkan; jalankan lagi **rebuild agregasi** lalu jalankan lagi **TOPSIS** jika sudah Anda hitung ulang bobot/perlu update |
+| MySQL gagal menjatuhkan constraint unik evaluations | Migrasi sudah menggunakan indeks pembantu untuk FK dan `Schema::withoutForeignKeyConstraints`; gunakan `migrate:fresh` hanya untuk dev |
+| Forgot password dalam dev | Jalankan lagi `migrate:fresh --seed` atau reset manual di DB |
+| Ikons / cache ganda | `php artisan optimize:clear`, hard refresh browser |
 
 ```bash
-# Hapus semua cache
-php artisan optimize:clear
-
-# Reset database dan isi ulang data awal
-php artisan migrate:fresh --seed
-
-# Cek daftar route
-php artisan route:list
-
-# Jalankan server di port tertentu
-php artisan serve --port=8080
+php artisan migrate:fresh --seed   # RESET total + data demo
+php artisan route:list               # Daftar endpoint
+php artisan serve --port=8080       # Jalankan pada port tertentu
 ```
 
-### Kontak Dukungan
-
-Jika menemukan bug atau masalah, periksa:
-1. File log di `storage/logs/laravel.log`
-2. Buka browser DevTools (F12) untuk melihat error JavaScript
-3. Pastikan semua persyaratan sistem terpenuhi
+Log aplikasi: `storage/logs/laravel.log`.
 
 ---
 
-**Selamat menggunakan Sistem Pendukung Keputusan Seleksi Penerimaan Karyawan Baru!**
+**Dokumen ini menjelaskan alur sistem secara keseluruhan dari setup lingkungan menuju keputusan seleksi bersama menggunakan metode hibrida AHP, agregasi kelompok KMKK, dan TOPSIS. Untuk penyusunan akademik Anda dapat menyitir modul matematika yang terkait dari kelas layanan pada namespace `App\Services`.**

@@ -2,14 +2,18 @@
 
 namespace App\Services;
 
+use App\Models\AggregatedEvaluation;
 use App\Models\Applicant;
-use App\Models\Criteria;
 use App\Models\CriteriaWeight;
-use App\Models\Evaluation;
+use App\Models\SelectionPeriod;
 use App\Models\SelectionResult;
 
 class TopsisService
 {
+    public function __construct(
+        private readonly GroupDecisionAggregator $groupDecisionAggregator,
+    ) {}
+
     public function getCalculationData(int $periodId): array
     {
         $weights = CriteriaWeight::where('period_id', $periodId)
@@ -18,7 +22,7 @@ class TopsisService
             ->keyBy('criteria_id');
 
         if ($weights->isEmpty()) {
-            return ['error' => 'Bobot kriteria belum dihitung. Lakukan perhitungan AHP terlebih dahulu.'];
+            return ['error' => 'Bobot kriteria belum tersedia untuk periode ini. Atur bobot di data periode (kriteria terpilih) atau lakukan perhitungan AHP.'];
         }
 
         $applicants = Applicant::where('period_id', $periodId)->get();
@@ -26,10 +30,15 @@ class TopsisService
             return ['error' => 'Tidak ada pelamar pada periode ini.'];
         }
 
-        $evaluations = Evaluation::where('period_id', $periodId)->get();
-        if ($evaluations->isEmpty()) {
-            return ['error' => 'Belum ada penilaian untuk pelamar.'];
+        if (! $this->groupDecisionAggregator->isAggregateMatrixComplete($periodId)) {
+            return [
+                'error' => 'Matriks agregat KMKK belum siap atau belum lengkap. Gunakan halaman Evaluasi Kelompok (KMKK) untuk menyatukan penilaian semua evaluator, lalu lakukan lagi perhitungan TOPSIS.',
+            ];
         }
+
+        $aggregates = AggregatedEvaluation::where('period_id', $periodId)->get()->keyBy(
+            fn (AggregatedEvaluation $row): string => $row->applicant_id.'_'.$row->criteria_id
+        );
 
         $criteriaIds = $weights->keys()->toArray();
         $criteriaTypes = [];
@@ -37,15 +46,13 @@ class TopsisService
             $criteriaTypes[$cId] = $w->criteria->type;
         }
 
-        // Step 1: Build decision matrix
+        // Step 1: Build decision matrix (nilai dari agregasi kelompok: rata-rata atau OWA Yager)
         $decisionMatrix = [];
         foreach ($applicants as $applicant) {
             foreach ($criteriaIds as $cId) {
-                $eval = $evaluations
-                    ->where('applicant_id', $applicant->id)
-                    ->where('criteria_id', $cId)
-                    ->first();
-                $decisionMatrix[$applicant->id][$cId] = $eval ? (float) $eval->score : 0;
+                /** @var AggregatedEvaluation|null $cell */
+                $cell = $aggregates->get($applicant->id.'_'.$cId);
+                $decisionMatrix[$applicant->id][$cId] = $cell ? (float) $cell->aggregated_score : 0;
             }
         }
 
@@ -127,6 +134,8 @@ class TopsisService
             $rankings[$applicantId] = $rank++;
         }
 
+        $periodSummary = SelectionPeriod::find($periodId);
+
         return [
             'decision_matrix' => $decisionMatrix,
             'divisors' => $divisors,
@@ -140,6 +149,8 @@ class TopsisService
             'applicants' => $applicants->keyBy('id'),
             'criteria_ids' => $criteriaIds,
             'weights' => $weights,
+            'kmkk_aggregation_method' => $periodSummary?->aggregation_method,
+            'kmkk_aggregation_computed_at' => $periodSummary?->aggregation_computed_at,
         ];
     }
 
