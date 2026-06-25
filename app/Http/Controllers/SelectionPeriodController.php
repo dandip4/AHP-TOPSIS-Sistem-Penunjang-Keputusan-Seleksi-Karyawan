@@ -6,6 +6,7 @@ use App\Models\AggregatedEvaluation;
 use App\Models\Criteria;
 use App\Models\CriteriaWeight;
 use App\Models\Evaluation;
+use App\Models\Evaluator;
 use App\Models\PairwiseComparison;
 use App\Models\SelectionPeriod;
 use App\Services\GroupDecisionAggregator;
@@ -34,8 +35,9 @@ class SelectionPeriodController extends Controller
     public function create()
     {
         $criteriaMaster = Criteria::active()->with('subCriteria')->orderBy('code')->get();
+        $evaluators = Evaluator::active()->get();
 
-        return view('BE.pages.periods.create', compact('criteriaMaster'));
+        return view('BE.pages.periods.create', compact('criteriaMaster', 'evaluators'));
     }
 
     public function store(Request $request)
@@ -48,13 +50,17 @@ class SelectionPeriodController extends Controller
                 'created_by' => Auth::id(),
             ]);
             $this->syncPeriodCriteriaAndWeights($period, $validated['criteria_ids'], $validated['weights_normalized']);
+            // Attach evaluators to period
+            if (! empty($validated['evaluator_ids'])) {
+                $period->evaluators()->attach($validated['evaluator_ids']);
+            }
         });
 
         return redirect()->route('periods.index')->with('success', 'Periode seleksi berhasil dibuat dengan kriteria dan bobot awal.');
     }
 
     /**
-     * @return array{criteria_ids: array<int,int>, weights_normalized: array<int,float>}
+     * @return array{criteria_ids: array<int,int>, weights_normalized: array<int,float>, evaluator_ids: array<int,int>}
      */
     private function validatePeriodForm(Request $request, bool $isUpdate): array
     {
@@ -67,6 +73,8 @@ class SelectionPeriodController extends Controller
             'criteria_ids' => ['required', 'array', 'min:1'],
             'criteria_ids.*' => ['integer', 'distinct', Rule::exists('criteria', 'id')->where('is_active', true)],
             'weights' => ['required', 'array'],
+            'evaluator_ids' => ['nullable', 'array'],
+            'evaluator_ids.*' => ['integer', 'distinct', Rule::exists('evaluators', 'id')->where('is_active', true)],
         ];
 
         if ($isUpdate) {
@@ -102,9 +110,12 @@ class SelectionPeriodController extends Controller
             $weightsNormalized[$cid] = round(max(0.0, (float) $request->input("weights.$cid")) / $sumRaw, 6);
         }
 
+        $evaluatorIds = collect($request->evaluator_ids ?? [])->map(static fn ($v): int => (int) $v)->uniqueStrict()->values()->all();
+
         return [
             'criteria_ids' => $idsOrdered,
             'weights_normalized' => $weightsNormalized,
+            'evaluator_ids' => $evaluatorIds,
         ];
     }
 
@@ -160,11 +171,13 @@ class SelectionPeriodController extends Controller
         $period->load([
             'linkedCriteria' => static fn ($q) => $q->with('subCriteria'),
             'criteriaWeights',
+            'evaluators',
         ]);
 
         $criteriaMaster = Criteria::active()->with('subCriteria')->orderBy('code')->get();
+        $evaluators = Evaluator::active()->get();
 
-        return view('BE.pages.periods.edit', compact('period', 'criteriaMaster'));
+        return view('BE.pages.periods.edit', compact('period', 'criteriaMaster', 'evaluators'));
     }
 
     public function update(Request $request, SelectionPeriod $period)
@@ -176,6 +189,8 @@ class SelectionPeriodController extends Controller
                 $request->only('name', 'position', 'start_date', 'end_date', 'description', 'status')
             );
             $this->syncPeriodCriteriaAndWeights($period, $validated['criteria_ids'], $validated['weights_normalized']);
+            // Sync evaluators to period
+            $period->evaluators()->sync($validated['evaluator_ids']);
         });
 
         return redirect()->route('periods.index')->with('success', 'Periode seleksi berhasil diperbarui.');

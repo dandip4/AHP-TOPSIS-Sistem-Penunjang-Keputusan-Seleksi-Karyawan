@@ -1,0 +1,234 @@
+cd /mnt/user-data/outputs/uap_pso && python3 << 'PYEOF'
+import json, copy
+
+with open('UAP_PSO_SafetyStock_ReorderPoint.ipynb') as f:
+    nb = json.load(f)
+
+def make_code(src):
+    return {"cell_type": "code", "execution_count": None,
+            "metadata": {}, "outputs": [], "source": src}
+
+def make_md(src):
+    return {"cell_type": "markdown", "metadata": {}, "source": src}
+
+# ── CELL 3: update markdown Load Dataset (mention Seasonality, no Lead Time)
+nb['cells'][3]['source'] = """## 📥 1. Load Dataset
+
+> **Cara mendapatkan dataset:**
+> 1. Buka link: https://www.kaggle.com/datasets/anirudhchauhan/retail-store-inventory-forecasting-dataset
+> 2. Klik **Download** → ekstrak file ZIP
+> 3. Upload file `retail_store_inventory.csv` ke Google Colab (klik ikon folder di sidebar kiri → upload)
+> 4. Jalankan cell berikut
+
+*(Atau jalankan cell alternatif di bawah untuk generate data sintetis jika belum download)*"""
+
+# ── CELL 4: load CSV — tambah print kolom supaya user tahu
+nb['cells'][4]['source'] = """# ============================================================
+# OPSI A: Load dari file CSV yang sudah diupload
+# ============================================================
+try:
+    df_raw = pd.read_csv('retail_store_inventory.csv')
+    print(f'✅ Dataset berhasil dimuat! Shape: {df_raw.shape}')
+    print(f'Kolom: {list(df_raw.columns)}')
+    USE_REAL_DATA = True
+except FileNotFoundError:
+    print('⚠️  File tidak ditemukan. Menggunakan data sintetis...')
+    USE_REAL_DATA = False"""
+
+# ── CELL 5: data sintetis — sesuaikan persis dengan kolom dataset Kaggle asli
+#            (TIDAK ada Lead Time di Kaggle, kita generate sendiri)
+nb['cells'][5]['source'] = """# ============================================================
+# OPSI B: Generate Data Sintetis (jika belum punya file CSV)
+# Struktur kolom IDENTIK dengan dataset Kaggle asli
+# ============================================================
+if not USE_REAL_DATA:
+    np.random.seed(42)
+    n = 2000
+
+    categories    = ['Electronics', 'Clothing', 'Food', 'Furniture', 'Toys']
+    regions       = ['North', 'South', 'East', 'West']
+    weather_opts  = ['Sunny', 'Rainy', 'Cloudy', 'Snowy']
+    seasons       = ['Spring', 'Summer', 'Fall', 'Winter']
+
+    df_raw = pd.DataFrame({
+        'Date'               : pd.date_range('2022-01-01', periods=n, freq='D').strftime('%m/%d/%Y'),
+        'Store ID'           : np.random.choice([f'S00{i}' for i in range(1, 6)], n),
+        'Product ID'         : np.random.choice([f'P{i:04d}' for i in range(1, 21)], n),
+        'Category'           : np.random.choice(categories, n),
+        'Region'             : np.random.choice(regions, n),
+        'Inventory Level'    : np.random.randint(50, 500, n).astype(float),
+        'Units Sold'         : np.random.randint(0, 499, n).astype(float),
+        'Units Ordered'      : np.random.randint(20, 200, n).astype(float),
+        'Demand Forecast'    : np.round(np.random.uniform(-10, 519, n), 2),
+        'Price'              : np.round(np.random.uniform(10.0, 100.0, n), 2),
+        'Discount'           : np.random.choice([0, 5, 10, 15, 20], n).astype(float),
+        'Competitor Pricing' : np.round(np.random.uniform(5.0, 105.0, n), 2),
+        'Weather Condition'  : np.random.choice(weather_opts, n),
+        'Holiday/Promotion'  : np.random.choice([0, 1], n, p=[0.5, 0.5]).astype(float),
+        'Seasonality'        : np.random.choice(seasons, n),
+    })
+
+    print(f'✅ Data sintetis berhasil dibuat! Shape: {df_raw.shape}')
+    print(f'Kolom: {list(df_raw.columns)}')"""
+
+# ── INSERT CELL 6 baru: normalisasi + generate Lead Time dari data yang ada
+# Geser cell 6 dst ke bawah
+normalization_cell = make_code("""# ============================================================
+# NORMALISASI KOLOM & GENERATE PARAMETER TAMBAHAN
+# Dataset Kaggle asli tidak memiliki kolom 'Lead Time',
+# sehingga kita estimasi dari pola Units Ordered vs Units Sold
+# ============================================================
+
+print('=== Kolom Dataset ===')
+print(list(df_raw.columns))
+print()
+
+# ── 1. Pastikan tipe numerik untuk kolom kunci
+num_cols = ['Inventory Level', 'Units Sold', 'Units Ordered',
+            'Demand Forecast', 'Price', 'Discount']
+for col in num_cols:
+    if col in df_raw.columns:
+        df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+
+# ── 2. Generate Lead Time sintetis yang realistis (1–14 hari)
+#       Produk dengan harga tinggi cenderung lead time lebih panjang
+np.random.seed(99)
+if 'Lead Time' not in df_raw.columns:
+    # Skala lead time berdasarkan harga (produk mahal = lead time lebih lama)
+    price_norm = (df_raw['Price'] - df_raw['Price'].min()) / (df_raw['Price'].max() - df_raw['Price'].min() + 1e-9)
+    base_lt    = np.random.randint(1, 8, len(df_raw))          # lead time dasar 1-7 hari
+    extra_lt   = (price_norm * 7).astype(int)                  # tambahan 0-7 hari sesuai harga
+    df_raw['Lead Time'] = np.clip(base_lt + extra_lt, 1, 14)
+    print('✅ Kolom Lead Time berhasil di-generate (1–14 hari, berkorelasi dengan harga)')
+else:
+    df_raw['Lead Time'] = pd.to_numeric(df_raw['Lead Time'], errors='coerce').fillna(7)
+    print('✅ Kolom Lead Time ditemukan di dataset')
+
+# ── 3. Drop baris dengan nilai NaN di kolom kritis
+before = len(df_raw)
+df_raw.dropna(subset=['Units Sold', 'Price', 'Inventory Level'], inplace=True)
+after  = len(df_raw)
+print(f'   Baris sebelum: {before} | setelah drop NaN: {after}')
+
+# ── 4. Tampilkan info akhir
+print(f'\\nKolom final: {list(df_raw.columns)}')
+print(f'Shape final: {df_raw.shape}')""")
+
+# ── CELL 7 (lama cell 6): preview — tidak perlu diubah
+# ── CELL 9 (statistik deskriptif): fix kolom — sekarang Lead Time sudah ada
+new_stats_cell = make_code("""# ---- Statistik Deskriptif Kolom Kunci ----
+print('=== Statistik Deskriptif ===')
+stat_cols = ['Units Sold', 'Lead Time', 'Inventory Level', 'Demand Forecast', 'Price', 'Discount']
+stat_cols = [c for c in stat_cols if c in df_raw.columns]  # hanya kolom yang ada
+display(df_raw[stat_cols].describe().round(2))""")
+
+# ── CELL 10 (EDA plot): fix kolom Lead Time (sekarang pasti ada)
+new_eda_cell = make_code("""# ---- Visualisasi EDA ----
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+fig.suptitle('Exploratory Data Analysis — Retail Inventory Dataset', fontsize=14, fontweight='bold', y=1.01)
+
+# 1. Distribusi Units Sold
+axes[0,0].hist(df_raw['Units Sold'].dropna(), bins=30, color='steelblue', edgecolor='white', alpha=0.85)
+axes[0,0].set_title('Distribusi Units Sold (Permintaan Harian)')
+axes[0,0].set_xlabel('Units Sold')
+axes[0,0].set_ylabel('Frekuensi')
+mean_sold = df_raw['Units Sold'].mean()
+axes[0,0].axvline(mean_sold, color='red', linestyle='--', label=f'Mean={mean_sold:.1f}')
+axes[0,0].legend()
+
+# 2. Distribusi Lead Time (yang sudah di-generate)
+lead_counts = df_raw['Lead Time'].value_counts().sort_index()
+axes[0,1].bar(lead_counts.index, lead_counts.values, color='coral', edgecolor='white', alpha=0.85)
+axes[0,1].set_title('Distribusi Lead Time yang Di-generate (Hari)')
+axes[0,1].set_xlabel('Lead Time (hari)')
+axes[0,1].set_ylabel('Frekuensi')
+
+# 3. Rata-rata Units Sold per Kategori
+if 'Category' in df_raw.columns:
+    cat_sales = df_raw.groupby('Category')['Units Sold'].mean().sort_values(ascending=True)
+    axes[1,0].barh(cat_sales.index, cat_sales.values, color='mediumseagreen', edgecolor='white', alpha=0.85)
+    axes[1,0].set_title('Rata-rata Units Sold per Kategori')
+    axes[1,0].set_xlabel('Rata-rata Units Sold')
+
+# 4. Inventory Level vs Units Sold (scatter sample)
+sample_idx = np.random.choice(len(df_raw), min(500, len(df_raw)), replace=False)
+axes[1,1].scatter(df_raw['Inventory Level'].iloc[sample_idx],
+                  df_raw['Units Sold'].iloc[sample_idx],
+                  alpha=0.4, color='mediumpurple', s=20)
+axes[1,1].set_title('Inventory Level vs Units Sold')
+axes[1,1].set_xlabel('Inventory Level')
+axes[1,1].set_ylabel('Units Sold')
+
+plt.tight_layout()
+plt.savefig('eda_plot.png', bbox_inches='tight')
+plt.show()
+print('✅ Plot EDA tersimpan sebagai eda_plot.png')""")
+
+# ── CELL 12 (ekstraksi parameter): perbaiki referensi kolom & tambah guard
+new_param_cell = make_code("""# ============================================================
+# Hitung parameter inventori dari dataset
+# ============================================================
+
+# Ambil satu produk tertentu untuk contoh optimasi terfokus
+PRODUCT_ID = df_raw['Product ID'].value_counts().index[0]
+df_prod    = df_raw[df_raw['Product ID'] == PRODUCT_ID].copy()
+
+print(f'Produk yang dianalisis : {PRODUCT_ID}')
+print(f'Jumlah record          : {len(df_prod)}')
+
+# ---- Parameter Permintaan ----
+D_mean = df_prod['Units Sold'].mean()
+D_std  = df_prod['Units Sold'].std()
+if D_std == 0 or pd.isna(D_std):
+    D_std = D_mean * 0.2  # fallback 20% dari mean
+
+# ---- Parameter Lead Time ----
+LT_mean = df_prod['Lead Time'].mean()
+LT_std  = df_prod['Lead Time'].std()
+if LT_std == 0 or pd.isna(LT_std):
+    LT_std = 1.0  # fallback 1 hari
+
+# ---- Harga & Asumsi Biaya ----
+unit_price             = df_prod['Price'].mean()
+holding_rate           = 0.20           # 20% dari harga = biaya simpan per unit/tahun
+stockout_cost_per_unit = unit_price * 0.30
+ordering_cost          = 50.0           # biaya sekali pesan (satuan moneter)
+annual_demand          = D_mean * 365
+
+# ---- Service Level ----
+z_score = 1.65  # ~95% service level
+
+print('\\n=== Parameter Inventori ===')
+print(f'Rata-rata permintaan harian  : {D_mean:.2f} unit')
+print(f'Std. dev. permintaan         : {D_std:.2f} unit')
+print(f'Rata-rata lead time          : {LT_mean:.2f} hari')
+print(f'Std. dev. lead time          : {LT_std:.2f} hari')
+print(f'Harga rata-rata per unit     : {unit_price:.2f}')
+print(f'Biaya simpan per unit/tahun  : {unit_price * holding_rate:.2f}')
+print(f'Biaya stockout per unit      : {stockout_cost_per_unit:.2f}')
+print(f'Biaya pemesanan per order    : {ordering_cost:.2f}')""")
+
+# ── Rebuild cells list
+cells = nb['cells']
+
+# Insert normalization cell after cell index 5 (opsi B), before old cell 6 (preview)
+cells.insert(6, normalization_cell)
+
+# Now indices shifted by 1:
+# old cell 8 (statistik) → now index 9
+# old cell 9 (EDA)       → now index 10
+# old cell 11 (param)    → now index 12
+
+cells[9]  = new_stats_cell
+cells[10] = new_eda_cell
+cells[12] = new_param_cell
+
+# Save
+with open('UAP_PSO_SafetyStock_ReorderPoint.ipynb', 'w') as f:
+    json.dump(nb, f, indent=1, ensure_ascii=False)
+
+print(f'✅ Notebook updated! Total cells: {len(cells)}')
+PYEOF
+Keluaran
+
+✅ Notebook updated! Total cells: 36

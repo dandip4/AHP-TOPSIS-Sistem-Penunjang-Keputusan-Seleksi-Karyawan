@@ -70,7 +70,36 @@
 
                                 <div class="col-12">
                                     <div class="border rounded p-3 bg-body">
-                                        <label class="form-label fw-semibold"><i class="ti ti-list-details me-2 text-primary"></i>Kriteria & bobot untuk posisi ini</label>
+                                        <label class="form-label fw-semibold"><i class="ti ti-users me-2 text-primary"></i>Evaluator yang berpartisipasi</label>
+                                        <p class="small text-muted mb-3">Pilih evaluator mana saja yang akan mengevaluasi pelamar pada periode ini. Minimal satu evaluator harus dipilih.</p>
+                                        @error('evaluator_ids')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
+                                        <div class="row g-2">
+                                            @forelse($evaluators as $evaluator)
+                                                @php
+                                                    $checked = collect(old('evaluator_ids', []))->map(fn ($v) => (int) $v)->contains((int) $evaluator->id);
+                                                @endphp
+                                                <div class="col-md-6 col-lg-4">
+                                                    <div class="form-check">
+                                                        <input type="checkbox" class="form-check-input" name="evaluator_ids[]" value="{{ $evaluator->id }}" id="evaluator_{{ $evaluator->id }}" @checked($checked)>
+                                                        <label class="form-check-label" for="evaluator_{{ $evaluator->id }}">
+                                                            <strong>{{ $evaluator->code }} — {{ $evaluator->name }}</strong>
+                                                            <div class="small text-muted">{{ $evaluator->role_label }}</div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            @empty
+                                                <div class="col-12">
+                                                    <div class="alert alert-warning mb-0">
+                                                        <i class="ti ti-alert-circle me-2"></i>Tidak ada evaluator aktif. Tambahkan evaluator dulu di menu Master Data.
+                                                    </div>
+                                                </div>
+                                            @endforelse
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="border rounded p-3 bg-body">
                                         <p class="small text-muted mb-3">Centang kriteria yang dipakai pada periode ini. Isi <strong>bobot relatif</strong> (&gt; 0); sistem menormalisasi sehingga jumlah bobot = 1 untuk TOPSIS/AHP dasar.</p>
                                         @error('criteria_ids')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
                                         @error('weights')<div class="text-danger small mb-2">{{ $message }}</div>@enderror

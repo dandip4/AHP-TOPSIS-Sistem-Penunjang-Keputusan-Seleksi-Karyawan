@@ -113,6 +113,16 @@
     @endif
 
     @if($u->isAdmin() || $u->isDirektur() || $u->isEvaluatorUser())
+    <li class="pc-item pc-caption"><label>Analytics & Insights</label></li>
+    <li class="pc-item {{ request()->routeIs('analytics.*') ? 'active' : '' }}">
+        <a href="{{ route('analytics.index') }}" class="pc-link">
+            <span class="pc-micon"><i class="ti ti-chart-line"></i></span>
+            <span class="pc-mtext">Analytics Dashboard</span>
+        </a>
+    </li>
+    @endif
+
+    @if($u->isAdmin() || $u->isDirektur() || $u->isEvaluatorUser())
     <li class="pc-item pc-caption"><label>Laporan & Info</label></li>
     <li class="pc-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
         <a href="{{ route('reports.index') }}" class="pc-link">

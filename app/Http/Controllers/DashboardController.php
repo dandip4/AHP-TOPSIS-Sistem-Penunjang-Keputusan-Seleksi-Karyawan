@@ -21,6 +21,18 @@ class DashboardController extends Controller
         $totalLulus = SelectionResult::where('status', 'lulus')->count();
         $totalTidakLulus = SelectionResult::where('status', 'tidak_lulus')->count();
 
+        // Analytics shortcuts
+        $latestPeriod = SelectionPeriod::latest()->first();
+        $analyticsAvailable = $latestPeriod ? true : false;
+        $analyticsMessage = '';
+
+        if ($analyticsAvailable) {
+            $hasHistoricalData = SelectionPeriod::where('id', '!=', $latestPeriod->id)->count() >= 5;
+            if (!$hasHistoricalData) {
+                $analyticsMessage = 'Butuh 5+ periode untuk Naive Bayes prediction';
+            }
+        }
+
         $recentPeriods = SelectionPeriod::with('creator')
             ->latest()
             ->take(5)
@@ -137,7 +149,8 @@ class DashboardController extends Controller
             'applicantsPerPeriod', 'genderDistribution',
             'educationDistribution', 'periodStatusDistribution',
             'criteriaWeightsChart', 'topRankingChart',
-            'avgScorePerCriteria', 'scoreDistribution'
+            'avgScorePerCriteria', 'scoreDistribution',
+            'analyticsAvailable', 'latestPeriod', 'analyticsMessage'
         ));
     }
 }

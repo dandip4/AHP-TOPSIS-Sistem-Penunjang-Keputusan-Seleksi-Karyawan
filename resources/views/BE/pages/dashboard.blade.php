@@ -133,6 +133,48 @@
             </div>
         </div>
 
+        {{-- ROW 1.5: Analytics Shortcuts --}}
+        @if($analyticsAvailable && Auth::user()->isAdmin() || Auth::user()->isDirektur() || Auth::user()->isEvaluatorUser())
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="card border-primary">
+                    <div class="card-header bg-light-primary">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h5 class="mb-0"><i class="ti ti-chart-line"></i> Analytics & Insights</h5>
+                            @if($analyticsMessage)
+                            <small class="text-warning"><i class="ti ti-alert-circle"></i> {{ $analyticsMessage }}</small>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-3 col-sm-6">
+                                <a href="{{ route('analytics.index') }}" class="btn btn-outline-primary w-100 py-2">
+                                    <i class="ti ti-dashboard"></i> Main Dashboard
+                                </a>
+                            </div>
+                            <div class="col-md-3 col-sm-6">
+                                <a href="{{ route('analytics.trend') }}" class="btn btn-outline-info w-100 py-2">
+                                    <i class="ti ti-trending-up"></i> Trend Analysis
+                                </a>
+                            </div>
+                            <div class="col-md-3 col-sm-6">
+                                <a href="{{ route('analytics.prediction') }}" class="btn btn-outline-warning w-100 py-2">
+                                    <i class="ti ti-brain"></i> Naive Bayes
+                                </a>
+                            </div>
+                            <div class="col-md-3 col-sm-6">
+                                <a href="{{ route('analytics.quality-control') }}" class="btn btn-outline-danger w-100 py-2">
+                                    <i class="ti ti-check-circle"></i> Quality Control
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
+
         {{-- ROW 2: Line Chart Tren Pelamar --}}
         <div class="row">
             <div class="col-12">

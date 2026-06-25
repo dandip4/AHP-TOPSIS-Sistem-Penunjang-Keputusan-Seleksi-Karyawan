@@ -76,6 +76,16 @@ class SelectionPeriod extends Model
             ->orderBy('criteria.code');
     }
 
+    /**
+     * Evaluator yang berpartisipasi dalam periode ini.
+     */
+    public function evaluators(): BelongsToMany
+    {
+        return $this->belongsToMany(Evaluator::class, 'selection_period_evaluators', 'selection_period_id', 'evaluator_id')
+            ->withTimestamps()
+            ->orderBy('evaluators.sort_order');
+    }
+
     public function getStatusBadgeAttribute(): string
     {
         return match ($this->status) {

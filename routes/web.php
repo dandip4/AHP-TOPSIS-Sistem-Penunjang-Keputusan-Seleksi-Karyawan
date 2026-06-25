@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\ApplicantController;
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CalculationController;
 use App\Http\Controllers\CriteriaController;
@@ -27,6 +28,19 @@ Route::middleware('auth')->group(function () {
     Route::post('kmkk/rebuild', [KmkkGroupResultController::class, 'rebuild'])
         ->middleware('role:admin')
         ->name('kmkk.rebuild');
+
+    Route::prefix('analytics')->name('analytics.')->group(function () {
+        Route::get('/', [AnalyticsController::class, 'index'])->name('index');
+        Route::get('trend', [AnalyticsController::class, 'trend'])->name('trend');
+        Route::get('prediction', [AnalyticsController::class, 'prediction'])->name('prediction');
+        Route::get('sensitivity', [AnalyticsController::class, 'sensitivity'])->name('sensitivity');
+        Route::get('quality-control', [AnalyticsController::class, 'qualityControl'])->name('quality-control');
+
+        // API endpoints
+        Route::get('api/chart-score-distribution', [AnalyticsController::class, 'chartScoreDistribution'])->name('api.chart-score-distribution');
+        Route::get('api/chart-evaluator-performance', [AnalyticsController::class, 'chartEvaluatorPerformance'])->name('api.chart-evaluator-performance');
+        Route::get('api/chart-trend', [AnalyticsController::class, 'chartTrend'])->name('api.chart-trend');
+    });
 
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/{period}/print', [ReportController::class, 'print'])->name('reports.print');
